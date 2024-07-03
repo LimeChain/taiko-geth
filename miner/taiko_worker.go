@@ -132,6 +132,7 @@ func (w *worker) sealBlockWith(
 	blkMeta *engine.BlockMetadata,
 	baseFeePerGas *big.Int,
 	withdrawals types.Withdrawals,
+	virtualBlock bool,
 ) (*types.Block, error) {
 	// Decode transactions bytes.
 	var txs types.Transactions
@@ -144,6 +145,8 @@ func (w *worker) sealBlockWith(
 		// `V1TaikoL2.invalidateBlock` transaction.
 		return nil, fmt.Errorf("too less transactions in the block")
 	}
+
+	log.Info("Decoded Txs", "len", len(txs), "first anchor tx hash", txs[0].Hash().String())
 
 	params := &generateParams{
 		timestamp:     timestamp,
@@ -181,14 +184,14 @@ func (w *worker) sealBlockWith(
 		}
 		sender, err := types.LatestSignerForChainID(w.chainConfig.ChainID).Sender(tx)
 		if err != nil {
-			log.Debug("Skip an invalid proposed transaction", "hash", tx.Hash(), "reason", err)
+			log.Info("1 Skip an invalid proposed transaction", "hash", tx.Hash(), "reason", err)
 			continue
 		}
 
 		env.state.Prepare(rules, sender, blkMeta.Beneficiary, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
 		env.state.SetTxContext(tx.Hash(), env.tcount)
 		if _, err := w.commitTransaction(env, tx); err != nil {
-			log.Debug("Skip an invalid proposed transaction", "hash", tx.Hash(), "reason", err)
+			log.Info("2 Skip an invalid proposed transaction", "hash", tx.Hash(), "reason", err)
 			continue
 		}
 		env.tcount++
