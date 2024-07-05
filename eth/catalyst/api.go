@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth"
+	ec "github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/internal/version"
 	"github.com/ethereum/go-ethereum/log"
@@ -322,6 +323,15 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 
 	// CHANGE(taiko): check whether --taiko flag is set.
 	isTaiko := api.eth.BlockChain().Config().Taiko
+
+	if payloadAttributes != nil && payloadAttributes.VirtualBlock {
+		l1Origin, err := ec.NewTaikoAPIBackend(api.eth).HeadL1Origin()
+		if err != nil {
+			log.Info("Failed to get head l1 origin")
+		}
+		payloadAttributes.L1Origin.L1BlockHeight = l1Origin.L1BlockHeight
+		payloadAttributes.L1Origin.L1BlockHash = l1Origin.L1BlockHash
+	}
 
 	setCanonical := true
 	if payloadAttributes != nil {
