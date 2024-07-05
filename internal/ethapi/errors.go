@@ -76,3 +76,27 @@ func (e *TxIndexingError) ErrorCode() int {
 
 // ErrorData returns the hex encoded revert reason.
 func (e *TxIndexingError) ErrorData() interface{} { return "transaction indexing is in progress" }
+
+// VirtualBlockTxMissingError is an API error that indicates the virtual block transaction is missing.
+type VirtualBlockTxMissingError struct{}
+
+// NewVirtualBlockTxMissingError creates a VirtualBlockTxMissingError instance.
+func NewVirtualBlockTxMissingError() *VirtualBlockTxMissingError {
+	return &VirtualBlockTxMissingError{}
+}
+
+// Error implement error interface, returning the error message.
+func (e *VirtualBlockTxMissingError) Error() string {
+	return "virtual block transaction is missing"
+}
+
+// ErrorCode returns the JSON error code for a revert.
+// See: https://github.com/ethereum/wiki/wiki/JSON-RPC-Error-Codes-Improvement-Proposal
+func (e *VirtualBlockTxMissingError) ErrorCode() int {
+	return -32001 // to be decided
+}
+
+// ErrorData returns the hex encoded revert reason.
+func (e *VirtualBlockTxMissingError) ErrorData() interface{} {
+	return "virtual block transaction is missing"
+}

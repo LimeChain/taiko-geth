@@ -48,6 +48,12 @@ func ReadCanonicalHash(db ethdb.Reader, number uint64) common.Hash {
 	return common.BytesToHash(data)
 }
 
+// ReadVirtualBlockHash retrieves the hash assigned to a virtual block number.
+func ReadVirtualBlockHash(db ethdb.Reader, number uint64) common.Hash {
+	data, _ := db.Get(virtualBlockHeaderHashKey(number))
+	return common.BytesToHash(data)
+}
+
 // WriteCanonicalHash stores the hash assigned to a canonical block number.
 func WriteCanonicalHash(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
 	if err := db.Put(headerHashKey(number), hash.Bytes()); err != nil {

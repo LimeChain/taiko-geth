@@ -97,20 +97,23 @@ var (
 	snapSyncStatusFlagKey = []byte("SnapSyncStatus")
 
 	// Data item prefixes (use single byte to avoid mixing data types, avoid `i`, used for indexes).
-	headerPrefix       = []byte("h") // headerPrefix + num (uint64 big endian) + hash -> header
-	headerTDSuffix     = []byte("t") // headerPrefix + num (uint64 big endian) + hash + headerTDSuffix -> td
-	headerHashSuffix   = []byte("n") // headerPrefix + num (uint64 big endian) + headerHashSuffix -> hash
-	headerNumberPrefix = []byte("H") // headerNumberPrefix + hash -> num (uint64 big endian)
+	headerPrefix                 = []byte("h")  // headerPrefix + num (uint64 big endian) + hash -> header
+	virtualBlockHeaderPrefix     = []byte("vh") // headerPrefix + num (uint64 big endian) + hash -> header
+	headerTDSuffix               = []byte("t")  // headerPrefix + num (uint64 big endian) + hash + headerTDSuffix -> td
+	headerHashSuffix             = []byte("n")  // headerPrefix + num (uint64 big endian) + headerHashSuffix -> hash
+	virtualBlockHeaderHashSuffix = []byte("vn") // headerPrefix + num (uint64 big endian) + headerHashSuffix -> virtual blockhash
+	headerNumberPrefix           = []byte("H")  // headerNumberPrefix + hash -> num (uint64 big endian)
 
 	blockBodyPrefix     = []byte("b") // blockBodyPrefix + num (uint64 big endian) + hash -> block body
 	blockReceiptsPrefix = []byte("r") // blockReceiptsPrefix + num (uint64 big endian) + hash -> block receipts
 
-	txLookupPrefix        = []byte("l") // txLookupPrefix + hash -> transaction/receipt lookup metadata
-	bloomBitsPrefix       = []byte("B") // bloomBitsPrefix + bit (uint16 big endian) + section (uint64 big endian) + hash -> bloom bits
-	SnapshotAccountPrefix = []byte("a") // SnapshotAccountPrefix + account hash -> account trie value
-	SnapshotStoragePrefix = []byte("o") // SnapshotStoragePrefix + account hash + storage hash -> storage trie value
-	CodePrefix            = []byte("c") // CodePrefix + code hash -> account code
-	skeletonHeaderPrefix  = []byte("S") // skeletonHeaderPrefix + num (uint64 big endian) -> header
+	txLookupPrefix             = []byte("l")  // txLookupPrefix + hash -> transaction/receipt lookup metadata
+	txVirtualBlockLookupPrefix = []byte("vl") // txVirtualBlockLookupPrefix + hash -> transaction/receipt virtual block lookup metadata
+	bloomBitsPrefix            = []byte("B")  // bloomBitsPrefix + bit (uint16 big endian) + section (uint64 big endian) + hash -> bloom bits
+	SnapshotAccountPrefix      = []byte("a")  // SnapshotAccountPrefix + account hash -> account trie value
+	SnapshotStoragePrefix      = []byte("o")  // SnapshotStoragePrefix + account hash + storage hash -> storage trie value
+	CodePrefix                 = []byte("c")  // CodePrefix + code hash -> account code
+	skeletonHeaderPrefix       = []byte("S")  // skeletonHeaderPrefix + num (uint64 big endian) -> header
 
 	// Path-based storage scheme of merkle patricia trie.
 	trieNodeAccountPrefix = []byte("A") // trieNodeAccountPrefix + hexPath -> trie node
@@ -177,6 +180,11 @@ func headerHashKey(number uint64) []byte {
 	return append(append(headerPrefix, encodeBlockNumber(number)...), headerHashSuffix...)
 }
 
+// virtualBlockHeaderHashKey = virtualBlockHeaderPrefix + num (uint64 big endian) + virtualBlockHeaderHashSuffix
+func virtualBlockHeaderHashKey(number uint64) []byte {
+	return append(append(virtualBlockHeaderPrefix, encodeBlockNumber(number)...), virtualBlockHeaderHashSuffix...)
+}
+
 // headerNumberKey = headerNumberPrefix + hash
 func headerNumberKey(hash common.Hash) []byte {
 	return append(headerNumberPrefix, hash.Bytes()...)
@@ -195,6 +203,11 @@ func blockReceiptsKey(number uint64, hash common.Hash) []byte {
 // txLookupKey = txLookupPrefix + hash
 func txLookupKey(hash common.Hash) []byte {
 	return append(txLookupPrefix, hash.Bytes()...)
+}
+
+// txVirtualBlockLookupKey = txVirtualBlockLookupPrefix + hash
+func txVirtualBlockLookupKey(hash common.Hash) []byte {
+	return append(txVirtualBlockLookupPrefix, hash.Bytes()...)
 }
 
 // accountSnapshotKey = SnapshotAccountPrefix + hash
