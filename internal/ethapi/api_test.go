@@ -589,10 +589,6 @@ func (b testBackend) GetTransaction(ctx context.Context, txHash common.Hash) (bo
 	tx, blockHash, blockNumber, index := rawdb.ReadTransaction(b.db, txHash)
 	return true, tx, blockHash, blockNumber, index, nil
 }
-func (b testBackend) GetVirtualBlockTransaction(ctx context.Context, txHash common.Hash) (bool, *types.Transaction, common.Hash, uint64, error) {
-	tx, blockHash, index := rawdb.ReadVirtualBlockTransaction(b.db, txHash)
-	return true, tx, blockHash, index, nil
-}
 func (b testBackend) GetPoolTransactions() (types.Transactions, error)         { panic("implement me") }
 func (b testBackend) GetPoolTransaction(txHash common.Hash) *types.Transaction { panic("implement me") }
 func (b testBackend) GetPoolNonce(ctx context.Context, addr common.Address) (uint64, error) {

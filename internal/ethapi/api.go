@@ -1657,23 +1657,12 @@ func (s *TransactionAPI) GetRawTransactionByHash(ctx context.Context, hash commo
 
 // GetTransactionReceipt returns the transaction receipt for the given transaction hash.
 func (s *TransactionAPI) GetTransactionReceipt(ctx context.Context, hash common.Hash) (map[string]interface{}, error) {
-	var found bool
-	var tx *types.Transaction
-	var blockHash common.Hash
-	var index uint64
-	var err error
 	found, tx, blockHash, blockNumber, index, err := s.b.GetTransaction(ctx, hash)
 	if err != nil {
 		return nil, NewTxIndexingError() // transaction is not fully indexed
 	}
 	if !found {
-		found, tx, blockHash, index, err = s.b.GetVirtualBlockTransaction(ctx, hash)
-		if err != nil {
-			return nil, NewVirtualBlockTxMissingError() // transaction is missing in the virtual block
-		}
-		if !found {
-			return nil, nil // transaction is not existent or reachable
-		}
+		return nil, nil // transaction is not existent or reachable
 	}
 	header, err := s.b.HeaderByHash(ctx, blockHash)
 	if err != nil {

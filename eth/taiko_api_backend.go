@@ -102,3 +102,42 @@ func (a *TaikoAuthAPIBackend) TxPoolContent(
 		maxTransactionsLists,
 	)
 }
+
+type HashAndNumber struct {
+	Hash   common.Hash
+	Number uint64
+}
+
+// GetPreconfirmedVirtualBlock ...
+func (s *TaikoAPIBackend) GetPreconfirmedVirtualBlock() HashAndNumber {
+	hash, number := rawdb.ReadPreconfirmedVirtualBlock(s.eth.ChainDb())
+
+	if (hash == common.Hash{}) && number == nil {
+		return HashAndNumber{}
+	}
+
+	return HashAndNumber{hash, *number}
+}
+
+// GetPendingVirtualBlock ...
+func (s *TaikoAPIBackend) GetPendingVirtualBlock() HashAndNumber {
+	hash, number := rawdb.ReadPendingVirtualBlock(s.eth.ChainDb())
+
+	if (hash == common.Hash{}) && number == nil {
+		return HashAndNumber{}
+	}
+
+	return HashAndNumber{hash, *number}
+}
+
+// UpdatePreconfirmedVirtualBlock ...
+func (s *TaikoAPIBackend) UpdatePreconfirmedVirtualBlock(blockHash common.Hash, blockNumber *big.Int) bool {
+	rawdb.WritePreconfirmedVirtualBlock(s.eth.ChainDb(), blockHash, blockNumber)
+	return true
+}
+
+// UpdatePendingVirtualBlock ...
+func (s *TaikoAPIBackend) UpdatePendingVirtualBlock(blockHash common.Hash, blockNumber *big.Int) bool {
+	rawdb.WritePendingVirtualBlock(s.eth.ChainDb(), blockHash, blockNumber)
+	return true
+}

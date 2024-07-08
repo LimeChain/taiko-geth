@@ -297,19 +297,6 @@ func (bc *BlockChain) GetTransactionLookup(hash common.Hash) (*rawdb.LegacyTxLoo
 	return lookup, tx, nil
 }
 
-func (bc *BlockChain) GetVirtualBlockTransactionLookup(hash common.Hash) (*rawdb.LegacyTxLookupEntry, *types.Transaction, error) {
-	tx, blockHash, txIndex := rawdb.ReadVirtualBlockTransaction(bc.db, hash)
-	if tx == nil {
-		return nil, nil, nil
-	}
-	lookup := &rawdb.LegacyTxLookupEntry{
-		BlockHash:  blockHash,
-		BlockIndex: 0,
-		Index:      txIndex,
-	}
-	return lookup, tx, nil
-}
-
 // GetTd retrieves a block's total difficulty in the canonical chain from the
 // database by hash and number, caching it if found.
 func (bc *BlockChain) GetTd(hash common.Hash, number uint64) *big.Int {

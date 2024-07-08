@@ -53,13 +53,48 @@ func ReadTxLookupEntry(db ethdb.Reader, hash common.Hash) *uint64 {
 	return &entry.BlockIndex
 }
 
-func ReadVirtualBlockTxLookupEntry(db ethdb.Reader, hash common.Hash) *uint64 {
-	data, _ := db.Get(txVirtualBlockLookupKey(hash))
-	if len(data) == 0 {
-		return nil
+func ReadPreconfirmedVirtualBlock(db ethdb.Reader) (common.Hash, *uint64) {
+	return readVirtualBlock(db, preconfBlockPrefix)
+}
+
+func ReadPendingVirtualBlock(db ethdb.Reader) (common.Hash, *uint64) {
+	return readVirtualBlock(db, pendingBlockPrefix)
+}
+
+func readVirtualBlock(db ethdb.Reader, prefix []byte) (common.Hash, *uint64) {
+	dataHash, _ := db.Get(append(prefix, virtualBlockHashKey...))
+	if len(dataHash) == 0 {
+		return common.Hash{}, nil
 	}
-	number := new(big.Int).SetBytes(data).Uint64()
-	return &number
+	hash := common.BytesToHash(dataHash)
+
+	dataNumber, _ := db.Get(append(prefix, virtualBlockNumberKey...))
+	if len(dataNumber) == 0 {
+		return common.Hash{}, nil
+	}
+	number := new(big.Int).SetBytes(dataNumber).Uint64()
+
+	return hash, &number
+}
+
+func WritePreconfirmedVirtualBlock(db ethdb.Writer, hash common.Hash, number *big.Int) {
+	writeVirtualBlock(db, preconfBlockPrefix, hash, number)
+}
+
+func WritePendingVirtualBlock(db ethdb.Writer, hash common.Hash, number *big.Int) {
+	writeVirtualBlock(db, pendingBlockPrefix, hash, number)
+}
+
+func writeVirtualBlock(db ethdb.Writer, prefix []byte, hash common.Hash, number *big.Int) {
+	hashBytes := hash.Bytes()
+	if err := db.Put(append(prefix, virtualBlockHashKey...), hashBytes); err != nil {
+		log.Crit("Failed to store entry", "err", err)
+	}
+
+	numberBytes := number.Bytes()
+	if err := db.Put(append(prefix, virtualBlockNumberKey...), numberBytes); err != nil {
+		log.Crit("Failed to store entry", "err", err)
+	}
 }
 
 // writeTxLookupEntry stores a positional metadata for a transaction,
@@ -105,18 +140,26 @@ func DeleteTxLookupEntries(db ethdb.KeyValueWriter, hashes []common.Hash) {
 // ReadTransaction retrieves a specific transaction from the database, along with
 // its added positional metadata.
 func ReadTransaction(db ethdb.Reader, hash common.Hash) (*types.Transaction, common.Hash, uint64, uint64) {
-	blockNumber := ReadTxLookupEntry(db, hash)
-	if blockNumber == nil {
-		return nil, common.Hash{}, 0, 0
+	var body *types.Body
+	var blockNumber *uint64
+	var blockHash common.Hash
+
+	blockNumber = ReadTxLookupEntry(db, hash)
+	if blockNumber != nil {
+		blockHash = ReadCanonicalHash(db, *blockNumber)
 	}
-	blockHash := ReadCanonicalHash(db, *blockNumber)
-	if blockHash == (common.Hash{}) {
-		return nil, common.Hash{}, 0, 0
+	if blockNumber != nil && blockHash != (common.Hash{}) {
+		body = ReadBody(db, blockHash, *blockNumber)
 	}
-	body := ReadBody(db, blockHash, *blockNumber)
 	if body == nil {
-		log.Error("Transaction referenced missing", "number", *blockNumber, "hash", blockHash)
-		return nil, common.Hash{}, 0, 0
+		// fetch the current pre-confirmation virtual block (hash, number)
+		// to provide pre-confirmation TX receipts
+		blockHash, blockNumber = ReadPreconfirmedVirtualBlock(db)
+		body = ReadBody(db, blockHash, *blockNumber)
+		if body == nil {
+			log.Error("Transaction referenced missing", "number", blockNumber, "hash", blockHash)
+			return nil, common.Hash{}, 0, 0
+		}
 	}
 	for txIndex, tx := range body.Transactions {
 		if tx.Hash() == hash {
@@ -125,30 +168,6 @@ func ReadTransaction(db ethdb.Reader, hash common.Hash) (*types.Transaction, com
 	}
 	log.Error("Transaction not found", "number", *blockNumber, "hash", blockHash, "txhash", hash)
 	return nil, common.Hash{}, 0, 0
-}
-
-// ReadVirtualTransaction retrieves a specific preconfirmed transaction from the database
-func ReadVirtualBlockTransaction(db ethdb.Reader, hash common.Hash) (*types.Transaction, common.Hash, uint64) {
-	virtualBlockNumber := ReadVirtualBlockTxLookupEntry(db, hash)
-	if virtualBlockNumber == nil {
-		return nil, common.Hash{}, 0
-	}
-	virtualBlockHash := ReadVirtualBlockHash(db, *virtualBlockNumber)
-	if virtualBlockHash == (common.Hash{}) {
-		return nil, common.Hash{}, 0
-	}
-	body := ReadBody(db, virtualBlockHash, *virtualBlockNumber)
-	if body == nil {
-		log.Error("Preconfirmed transaction referenced missing")
-		return nil, common.Hash{}, 0
-	}
-	for txIndex, tx := range body.Transactions {
-		if tx.Hash() == hash {
-			return tx, virtualBlockHash, uint64(txIndex)
-		}
-	}
-	log.Error("Preconfirmed transaction not found", "txhash", hash)
-	return nil, common.Hash{}, 0
 }
 
 // ReadReceipt retrieves a specific transaction receipt from the database, along with

@@ -329,19 +329,6 @@ func (b *EthAPIBackend) GetTransaction(ctx context.Context, txHash common.Hash) 
 	return true, tx, lookup.BlockHash, lookup.BlockIndex, lookup.Index, nil
 }
 
-// GetVirtualBlockTransaction retrieves the lookup along with the transaction itself associate
-// with the given transaction hash as part of the virtual block.
-func (b *EthAPIBackend) GetVirtualBlockTransaction(ctx context.Context, txHash common.Hash) (bool, *types.Transaction, common.Hash, uint64, error) {
-	lookup, tx, err := b.eth.blockchain.GetVirtualBlockTransactionLookup(txHash)
-	if err != nil {
-		return false, nil, common.Hash{}, 0, err
-	}
-	if lookup == nil || tx == nil {
-		return false, nil, common.Hash{}, 0, nil
-	}
-	return true, tx, lookup.BlockHash, lookup.Index, nil
-}
-
 func (b *EthAPIBackend) GetPoolNonce(ctx context.Context, addr common.Address) (uint64, error) {
 	return b.eth.txPool.Nonce(addr), nil
 }
