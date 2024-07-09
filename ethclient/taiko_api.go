@@ -63,22 +63,32 @@ func (ec *Client) GetPendingVirtualBlock(ctx context.Context) (eth.HashAndNumber
 	return res, nil
 }
 
-func (ec *Client) UpdatePreconfirmedVirtualBlock(ctx context.Context, hash common.Hash, number uint64) (bool, error) {
+func (ec *Client) UpdatePreconfirmedVirtualBlock(ctx context.Context, hash common.Hash, number *big.Int) (bool, error) {
 	var res bool
 
-	if err := ec.c.CallContext(ctx, &res, "taiko_updatePreconfirmedVirtualBlock", hash.Hex(), hexutil.EncodeUint64(number)); err != nil {
+	if err := ec.c.CallContext(ctx, &res, "taiko_updatePreconfirmedVirtualBlock", hash.Hex(), hexutil.EncodeBig(number)); err != nil {
 		return false, err
 	}
 
 	return res, nil
 }
 
-func (ec *Client) UpdatePendingVirtualBlock(ctx context.Context, hash common.Hash, number uint64) (bool, error) {
+func (ec *Client) UpdatePendingVirtualBlock(ctx context.Context, hash common.Hash, number *big.Int) (bool, error) {
 	var res bool
 
-	if err := ec.c.CallContext(ctx, &res, "taiko_updatePendingVirtualBlock", hash.Hex(), hexutil.EncodeUint64(number)); err != nil {
+	if err := ec.c.CallContext(ctx, &res, "taiko_updatePendingVirtualBlock", hash.Hex(), hexutil.EncodeBig(number)); err != nil {
 		return false, err
 	}
 
 	return res, nil
+}
+
+func (ec *Client) DeletePendingVirtualBlock(ctx context.Context) error {
+	var res bool
+
+	if err := ec.c.CallContext(ctx, &res, "taiko_deletePendingVirtualBlock"); err != nil {
+		return err
+	}
+
+	return nil
 }

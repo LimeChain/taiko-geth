@@ -97,6 +97,24 @@ func writeVirtualBlock(db ethdb.Writer, prefix []byte, hash common.Hash, number 
 	}
 }
 
+func DeletePreconfirmedVirtualBlock(db ethdb.KeyValueWriter) {
+	deleteVirtualBlock(db, preconfBlockPrefix)
+}
+
+func DeletePendingVirtualBlock(db ethdb.KeyValueWriter) {
+	deleteVirtualBlock(db, pendingBlockPrefix)
+}
+
+func deleteVirtualBlock(db ethdb.KeyValueWriter, prefix []byte) {
+	if err := db.Delete(append(prefix, virtualBlockHashKey...)); err != nil {
+		log.Crit("Failed to store entry", "err", err)
+	}
+
+	if err := db.Delete(append(prefix, virtualBlockNumberKey...)); err != nil {
+		log.Crit("Failed to store entry", "err", err)
+	}
+}
+
 // writeTxLookupEntry stores a positional metadata for a transaction,
 // enabling hash based transaction and receipt lookups.
 func writeTxLookupEntry(db ethdb.KeyValueWriter, hash common.Hash, numberBytes []byte) {
@@ -154,10 +172,14 @@ func ReadTransaction(db ethdb.Reader, hash common.Hash) (*types.Transaction, com
 	if body == nil {
 		// fetch the current pre-confirmation virtual block (hash, number)
 		// to provide pre-confirmation TX receipts
-		blockHash, blockNumber = ReadPreconfirmedVirtualBlock(db)
+		blockHash, blockNumber = ReadPendingVirtualBlock(db)
+		if blockNumber == nil {
+			log.Error("Pending Virtual Block missing", "txHash", hash, "blockHash", blockHash)
+			return nil, common.Hash{}, 0, 0
+		}
 		body = ReadBody(db, blockHash, *blockNumber)
 		if body == nil {
-			log.Error("Transaction referenced missing", "number", blockNumber, "hash", blockHash)
+			log.Error("Pending Virtual Block body missing", "txHash", hash, "number", blockNumber, "hash", blockHash)
 			return nil, common.Hash{}, 0, 0
 		}
 	}

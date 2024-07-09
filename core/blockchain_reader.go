@@ -430,6 +430,10 @@ func (bc *BlockChain) SubscribeChainHeadEvent(ch chan<- ChainHeadEvent) event.Su
 	return bc.scope.Track(bc.chainHeadFeed.Subscribe(ch))
 }
 
+func (bc *BlockChain) SubscribePreconfirmedHeadEvent(ch chan<- PreconfirmedHeadEvent) event.Subscription {
+	return bc.scope.Track(bc.preconfirmationsHeadFeed.Subscribe(ch))
+}
+
 // SubscribeChainSideEvent registers a subscription of ChainSideEvent.
 func (bc *BlockChain) SubscribeChainSideEvent(ch chan<- ChainSideEvent) event.Subscription {
 	return bc.scope.Track(bc.chainSideFeed.Subscribe(ch))
