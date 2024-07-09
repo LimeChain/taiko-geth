@@ -321,7 +321,6 @@ func (bc *BlockChain) GetTransactionLookup(hash common.Hash) (*rawdb.LegacyTxLoo
 		// not existent or not in the range of index, returning null.
 		return nil, nil, nil
 	}
-
 	lookup := &rawdb.LegacyTxLookupEntry{
 		BlockHash:  blockHash,
 		BlockIndex: blockNumber,
