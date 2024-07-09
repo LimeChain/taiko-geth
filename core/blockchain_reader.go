@@ -275,7 +275,7 @@ func (bc *BlockChain) GetTransactionLookup(hash common.Hash) (*rawdb.LegacyTxLoo
 		// fetch the current pre-confirmation virtual block (hash, number)
 		// to provide pre-confirmation TX receipts
 		//
-		// TODO: handle the case between t2-t3 (there is no pending virtual block)
+		// TODO(limechain): handle the case between t2-t3 (there is no pending virtual block)
 		//
 		//     t0    t1    t2    t3    t4
 		//      |     |     |     |     |
@@ -284,7 +284,7 @@ func (bc *BlockChain) GetTransactionLookup(hash common.Hash) (*rawdb.LegacyTxLoo
 		//      |     |     |     |     |
 		//     vb1   vb1   VB1   vb2    B1
 		//     tx1   tx1   tx1   tx3   tx1
-		//     tx2   tx2         tx2
+		//           tx2   tx2         tx2
 		blockHash, blockNumber := rawdb.ReadPendingVirtualBlock(bc.db)
 		if (blockHash != common.Hash{}) && blockNumber != nil {
 			body := rawdb.ReadBody(bc.db, blockHash, *blockNumber)
@@ -315,7 +315,6 @@ func (bc *BlockChain) GetTransactionLookup(hash common.Hash) (*rawdb.LegacyTxLoo
 		// not existent or not in the range of index, returning null.
 		return nil, nil, nil
 	}
-
 	lookup := &rawdb.LegacyTxLookupEntry{
 		BlockHash:  blockHash,
 		BlockIndex: blockNumber,
