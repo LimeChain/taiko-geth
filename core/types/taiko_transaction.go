@@ -24,6 +24,10 @@ func (tx *BlobTx) isAnchor() bool {
 	return false
 }
 
+func (tx *PreconfirmationTx) isAnchor() bool {
+	return false
+}
+
 func (tx *DynamicFeeTx) markAsAnchor() error {
 	tx.isAnhcor = true
 	return nil
@@ -38,5 +42,9 @@ func (tx *AccessListTx) markAsAnchor() error {
 }
 
 func (tx *BlobTx) markAsAnchor() error {
+	return ErrInvalidTxType
+}
+
+func (tx *PreconfirmationTx) markAsAnchor() error {
 	return ErrInvalidTxType
 }
