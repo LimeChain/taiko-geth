@@ -453,6 +453,14 @@ func (tx *Transaction) WithoutBlobTxSidecar() *Transaction {
 	return cpy
 }
 
+// BlobGas returns the blob gas limit of the transaction for blob transactions, 0 otherwise.
+func (tx *Transaction) Deadline() uint64 {
+	if inclusionPreconfirmationTx, ok := tx.inner.(*InclusionPreconfirmationTx); ok {
+		return inclusionPreconfirmationTx.deadline()
+	}
+	return 0
+}
+
 // SetTime sets the decoding time of a transaction. This is used by tests to set
 // arbitrary times and by persistent transaction pools when loading old txs from
 // disk.

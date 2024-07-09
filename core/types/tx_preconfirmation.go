@@ -34,16 +34,18 @@ type InclusionPreconfirmationTx struct {
 	Value      *big.Int        // wei amount
 	Data       []byte          // contract invocation input data
 	AccessList AccessList      // EIP-2930 access list
+	Deadline   uint64          // check if the deadline has passed before committing to it
 	V, R, S    *big.Int        // signature values
 }
 
 // copy creates a deep copy of the transaction data and initializes all fields.
 func (tx *InclusionPreconfirmationTx) copy() TxData {
 	cpy := &InclusionPreconfirmationTx{
-		Nonce: tx.Nonce,
-		To:    copyAddressPtr(tx.To),
-		Data:  common.CopyBytes(tx.Data),
-		Gas:   tx.Gas,
+		Nonce:    tx.Nonce,
+		Deadline: tx.Deadline,
+		To:       copyAddressPtr(tx.To),
+		Data:     common.CopyBytes(tx.Data),
+		Gas:      tx.Gas,
 		// These are copied below.
 		AccessList: make(AccessList, len(tx.AccessList)),
 		Value:      new(big.Int),
@@ -87,6 +89,7 @@ func (tx *InclusionPreconfirmationTx) gasFeeCap() *big.Int    { return tx.GasPri
 func (tx *InclusionPreconfirmationTx) value() *big.Int        { return tx.Value }
 func (tx *InclusionPreconfirmationTx) nonce() uint64          { return tx.Nonce }
 func (tx *InclusionPreconfirmationTx) to() *common.Address    { return tx.To }
+func (tx *InclusionPreconfirmationTx) deadline() uint64       { return tx.Deadline }
 
 func (tx *InclusionPreconfirmationTx) effectiveGasPrice(dst *big.Int, baseFee *big.Int) *big.Int {
 	return dst.Set(tx.GasPrice)

@@ -1314,6 +1314,7 @@ type RPCTransaction struct {
 	Hash                common.Hash       `json:"hash"`
 	Input               hexutil.Bytes     `json:"input"`
 	Nonce               hexutil.Uint64    `json:"nonce"`
+	Deadline            hexutil.Uint64    `json:"deadline"`
 	To                  *common.Address   `json:"to"`
 	TransactionIndex    *hexutil.Uint64   `json:"transactionIndex"`
 	Value               *hexutil.Big      `json:"value"`
@@ -1406,6 +1407,7 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
 		result.Accesses = &al
 		result.ChainID = (*hexutil.Big)(tx.ChainId())
 		result.YParity = &yparity
+		result.Deadline = hexutil.Uint64(tx.Deadline())
 	}
 	return result
 }
