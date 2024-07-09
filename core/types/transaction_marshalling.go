@@ -154,7 +154,7 @@ func (tx *Transaction) MarshalJSON() ([]byte, error) {
 			enc.Proofs = itx.Sidecar.Proofs
 		}
 
-	case *PreconfirmationTx:
+	case *InclusionPreconfirmationTx:
 		enc.ChainID = (*hexutil.Big)(itx.ChainID)
 		enc.Nonce = (*hexutil.Uint64)(&itx.Nonce)
 		enc.To = tx.To()
@@ -425,8 +425,8 @@ func (tx *Transaction) UnmarshalJSON(input []byte) error {
 			}
 		}
 
-	case PreconfirmationTxType:
-		var itx PreconfirmationTx
+	case InclusionPreconfirmationTxType:
+		var itx InclusionPreconfirmationTx
 		inner = &itx
 		if dec.ChainID == nil {
 			return errors.New("missing required field 'chainId' in transaction")

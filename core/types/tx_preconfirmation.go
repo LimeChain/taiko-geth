@@ -24,8 +24,8 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-// PreconfirmationTx is the data of EIP-2930 access list transactions.
-type PreconfirmationTx struct {
+// InclusionPreconfirmationTx is the data of EIP-2930 access list transactions.
+type InclusionPreconfirmationTx struct {
 	ChainID    *big.Int        // destination chain ID
 	Nonce      uint64          // nonce of sender account
 	GasPrice   *big.Int        // wei per gas
@@ -38,8 +38,8 @@ type PreconfirmationTx struct {
 }
 
 // copy creates a deep copy of the transaction data and initializes all fields.
-func (tx *PreconfirmationTx) copy() TxData {
-	cpy := &PreconfirmationTx{
+func (tx *InclusionPreconfirmationTx) copy() TxData {
+	cpy := &InclusionPreconfirmationTx{
 		Nonce: tx.Nonce,
 		To:    copyAddressPtr(tx.To),
 		Data:  common.CopyBytes(tx.Data),
@@ -76,34 +76,34 @@ func (tx *PreconfirmationTx) copy() TxData {
 }
 
 // accessors for innerTx.
-func (tx *PreconfirmationTx) txType() byte           { return PreconfirmationTxType }
-func (tx *PreconfirmationTx) chainID() *big.Int      { return tx.ChainID }
-func (tx *PreconfirmationTx) accessList() AccessList { return tx.AccessList }
-func (tx *PreconfirmationTx) data() []byte           { return tx.Data }
-func (tx *PreconfirmationTx) gas() uint64            { return tx.Gas }
-func (tx *PreconfirmationTx) gasPrice() *big.Int     { return tx.GasPrice }
-func (tx *PreconfirmationTx) gasTipCap() *big.Int    { return tx.GasPrice }
-func (tx *PreconfirmationTx) gasFeeCap() *big.Int    { return tx.GasPrice }
-func (tx *PreconfirmationTx) value() *big.Int        { return tx.Value }
-func (tx *PreconfirmationTx) nonce() uint64          { return tx.Nonce }
-func (tx *PreconfirmationTx) to() *common.Address    { return tx.To }
+func (tx *InclusionPreconfirmationTx) txType() byte           { return InclusionPreconfirmationTxType }
+func (tx *InclusionPreconfirmationTx) chainID() *big.Int      { return tx.ChainID }
+func (tx *InclusionPreconfirmationTx) accessList() AccessList { return tx.AccessList }
+func (tx *InclusionPreconfirmationTx) data() []byte           { return tx.Data }
+func (tx *InclusionPreconfirmationTx) gas() uint64            { return tx.Gas }
+func (tx *InclusionPreconfirmationTx) gasPrice() *big.Int     { return tx.GasPrice }
+func (tx *InclusionPreconfirmationTx) gasTipCap() *big.Int    { return tx.GasPrice }
+func (tx *InclusionPreconfirmationTx) gasFeeCap() *big.Int    { return tx.GasPrice }
+func (tx *InclusionPreconfirmationTx) value() *big.Int        { return tx.Value }
+func (tx *InclusionPreconfirmationTx) nonce() uint64          { return tx.Nonce }
+func (tx *InclusionPreconfirmationTx) to() *common.Address    { return tx.To }
 
-func (tx *PreconfirmationTx) effectiveGasPrice(dst *big.Int, baseFee *big.Int) *big.Int {
+func (tx *InclusionPreconfirmationTx) effectiveGasPrice(dst *big.Int, baseFee *big.Int) *big.Int {
 	return dst.Set(tx.GasPrice)
 }
 
-func (tx *PreconfirmationTx) rawSignatureValues() (v, r, s *big.Int) {
+func (tx *InclusionPreconfirmationTx) rawSignatureValues() (v, r, s *big.Int) {
 	return tx.V, tx.R, tx.S
 }
 
-func (tx *PreconfirmationTx) setSignatureValues(chainID, v, r, s *big.Int) {
+func (tx *InclusionPreconfirmationTx) setSignatureValues(chainID, v, r, s *big.Int) {
 	tx.ChainID, tx.V, tx.R, tx.S = chainID, v, r, s
 }
 
-func (tx *PreconfirmationTx) encode(b *bytes.Buffer) error {
+func (tx *InclusionPreconfirmationTx) encode(b *bytes.Buffer) error {
 	return rlp.Encode(b, tx)
 }
 
-func (tx *PreconfirmationTx) decode(input []byte) error {
+func (tx *InclusionPreconfirmationTx) decode(input []byte) error {
 	return rlp.DecodeBytes(input, tx)
 }

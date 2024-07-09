@@ -24,7 +24,7 @@ func (tx *BlobTx) isAnchor() bool {
 	return false
 }
 
-func (tx *PreconfirmationTx) isAnchor() bool {
+func (tx *InclusionPreconfirmationTx) isAnchor() bool {
 	return false
 }
 
@@ -45,6 +45,6 @@ func (tx *BlobTx) markAsAnchor() error {
 	return ErrInvalidTxType
 }
 
-func (tx *PreconfirmationTx) markAsAnchor() error {
+func (tx *InclusionPreconfirmationTx) markAsAnchor() error {
 	return ErrInvalidTxType
 }

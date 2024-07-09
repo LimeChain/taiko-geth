@@ -96,7 +96,7 @@ var (
 	// snapSyncStatusFlagKey flags that status of snap sync.
 	snapSyncStatusFlagKey = []byte("SnapSyncStatus")
 
-	// preconfirmation virtual blocks
+	// InclusionPreconfirmation virtual blocks
 	preconfBlockPrefix    = []byte("PreconfBlock")
 	pendingBlockPrefix    = []byte("PendingBlock")
 	virtualBlockHashKey   = []byte("VirtualBlockHash")
