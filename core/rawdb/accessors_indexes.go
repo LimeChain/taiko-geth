@@ -158,30 +158,20 @@ func DeleteTxLookupEntries(db ethdb.KeyValueWriter, hashes []common.Hash) {
 // ReadTransaction retrieves a specific transaction from the database, along with
 // its added positional metadata.
 func ReadTransaction(db ethdb.Reader, hash common.Hash) (*types.Transaction, common.Hash, uint64, uint64) {
-	var body *types.Body
-	var blockNumber *uint64
-	var blockHash common.Hash
+	blockNumber := ReadTxLookupEntry(db, hash)
+	if blockNumber == nil {
+		return nil, common.Hash{}, 0, 0
+	}
 
-	blockNumber = ReadTxLookupEntry(db, hash)
-	if blockNumber != nil {
-		blockHash = ReadCanonicalHash(db, *blockNumber)
+	blockHash := ReadCanonicalHash(db, *blockNumber)
+	if blockHash == (common.Hash{}) {
+		return nil, common.Hash{}, 0, 0
 	}
-	if blockNumber != nil && blockHash != (common.Hash{}) {
-		body = ReadBody(db, blockHash, *blockNumber)
-	}
+
+	body := ReadBody(db, blockHash, *blockNumber)
 	if body == nil {
-		// fetch the current pre-confirmation virtual block (hash, number)
-		// to provide pre-confirmation TX receipts
-		blockHash, blockNumber = ReadPendingVirtualBlock(db)
-		if blockNumber == nil {
-			log.Error("Pending Virtual Block missing", "txHash", hash, "blockHash", blockHash)
-			return nil, common.Hash{}, 0, 0
-		}
-		body = ReadBody(db, blockHash, *blockNumber)
-		if body == nil {
-			log.Error("Pending Virtual Block body missing", "txHash", hash, "number", blockNumber, "hash", blockHash)
-			return nil, common.Hash{}, 0, 0
-		}
+		log.Error("Transaction referenced missing", "number", *blockNumber, "hash", blockHash)
+		return nil, common.Hash{}, 0, 0
 	}
 	for txIndex, tx := range body.Transactions {
 		if tx.Hash() == hash {
