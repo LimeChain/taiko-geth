@@ -38,22 +38,24 @@ type sigCache struct {
 
 // MakeSigner returns a Signer based on the given chain config and block number.
 func MakeSigner(config *params.ChainConfig, blockNumber *big.Int, blockTime uint64) Signer {
-	var signer Signer
-	switch {
-	case config.IsCancun(blockNumber, blockTime):
-		signer = NewCancunSigner(config.ChainID)
-	case config.IsLondon(blockNumber):
-		signer = NewLondonSigner(config.ChainID)
-	case config.IsBerlin(blockNumber):
-		signer = NewEIP2930Signer(config.ChainID)
-	case config.IsEIP155(blockNumber):
-		signer = NewEIP155Signer(config.ChainID)
-	case config.IsHomestead(blockNumber):
-		signer = HomesteadSigner{}
-	default:
-		signer = FrontierSigner{}
-	}
-	return signer
+	// TODO: add preconf fork to the switch statement
+	return NewPreconfSigner(config.ChainID)
+	// var signer Signer
+	// switch {
+	// case config.IsCancun(blockNumber, blockTime):
+	// 	signer = NewCancunSigner(config.ChainID)
+	// case config.IsLondon(blockNumber):
+	// 	signer = NewLondonSigner(config.ChainID)
+	// case config.IsBerlin(blockNumber):
+	// 	signer = NewEIP2930Signer(config.ChainID)
+	// case config.IsEIP155(blockNumber):
+	// 	signer = NewEIP155Signer(config.ChainID)
+	// case config.IsHomestead(blockNumber):
+	// 	signer = HomesteadSigner{}
+	// default:
+	// 	signer = FrontierSigner{}
+	// }
+	// return signer
 }
 
 // LatestSigner returns the 'most permissive' Signer available for the given chain
@@ -64,21 +66,23 @@ func MakeSigner(config *params.ChainConfig, blockNumber *big.Int, blockTime uint
 // Use this in transaction-handling code where the current block number is unknown. If you
 // have the current block number available, use MakeSigner instead.
 func LatestSigner(config *params.ChainConfig) Signer {
-	if config.ChainID != nil {
-		if config.CancunTime != nil {
-			return NewCancunSigner(config.ChainID)
-		}
-		if config.LondonBlock != nil {
-			return NewLondonSigner(config.ChainID)
-		}
-		if config.BerlinBlock != nil {
-			return NewEIP2930Signer(config.ChainID)
-		}
-		if config.EIP155Block != nil {
-			return NewEIP155Signer(config.ChainID)
-		}
-	}
-	return HomesteadSigner{}
+	// TODO: add preconf fork to the switch statement
+	return NewPreconfSigner(config.ChainID)
+	// if config.ChainID != nil {
+	// 	if config.CancunTime != nil {
+	// 		return NewCancunSigner(config.ChainID)
+	// 	}
+	// 	if config.LondonBlock != nil {
+	// 		return NewLondonSigner(config.ChainID)
+	// 	}
+	// 	if config.BerlinBlock != nil {
+	// 		return NewEIP2930Signer(config.ChainID)
+	// 	}
+	// 	if config.EIP155Block != nil {
+	// 		return NewEIP155Signer(config.ChainID)
+	// 	}
+	// }
+	// return HomesteadSigner{}
 }
 
 // LatestSignerForChainID returns the 'most permissive' Signer available. Specifically,
@@ -173,6 +177,68 @@ type Signer interface {
 
 	// Equal returns true if the given signer is the same as the receiver.
 	Equal(Signer) bool
+}
+
+type preconfSigner struct{ cancunSigner }
+
+// TODO: add preconf fork name instead of PreconfSigner
+func NewPreconfSigner(chainId *big.Int) Signer {
+	return preconfSigner{cancunSigner{londonSigner{eip2930Signer{NewEIP155Signer(chainId)}}}}
+}
+
+func (s preconfSigner) Sender(tx *Transaction) (common.Address, error) {
+	if tx.Type() != InclusionPreconfirmationTxType {
+		return s.cancunSigner.Sender(tx)
+	}
+	V, R, S := tx.RawSignatureValues()
+	// Inclusion Preconfirmation txs are defined to use 0 and 1 as their recovery
+	// id, add 27 to become equivalent to unprotected Homestead signatures.
+	V = new(big.Int).Add(V, big.NewInt(27))
+	if tx.ChainId().Cmp(s.chainId) != 0 {
+		return common.Address{}, fmt.Errorf("%w: have %d want %d", ErrInvalidChainId, tx.ChainId(), s.chainId)
+	}
+	return recoverPlain(s.Hash(tx), R, S, V, true)
+}
+
+func (s preconfSigner) Equal(s2 Signer) bool {
+	x, ok := s2.(preconfSigner)
+	return ok && x.chainId.Cmp(s.chainId) == 0
+}
+
+func (s preconfSigner) SignatureValues(tx *Transaction, sig []byte) (R, S, V *big.Int, err error) {
+	txdata, ok := tx.inner.(*InclusionPreconfirmationTx)
+	if !ok {
+		return s.cancunSigner.SignatureValues(tx, sig)
+	}
+	// Check that chain ID of tx matches the signer. We also accept ID zero here,
+	// because it indicates that the chain ID was not specified in the tx.
+	if txdata.ChainID.Sign() != 0 && txdata.ChainID.Cmp(s.chainId) != 0 {
+		return nil, nil, nil, fmt.Errorf("%w: have %d want %d", ErrInvalidChainId, txdata.ChainID, s.chainId)
+	}
+	R, S, _ = decodeSignature(sig)
+	V = big.NewInt(int64(sig[64]))
+	return R, S, V, nil
+}
+
+// Hash returns the hash to be signed by the sender.
+// It does not uniquely identify the transaction.
+func (s preconfSigner) Hash(tx *Transaction) common.Hash {
+	if tx.Type() != InclusionPreconfirmationTxType {
+		return s.cancunSigner.Hash(tx)
+	}
+	return prefixedRlpHash(
+		tx.Type(),
+		[]interface{}{
+			s.chainId,
+			tx.Nonce(),
+			tx.GasPrice(),
+			tx.Gas(),
+			tx.To(),
+			tx.Value(),
+			tx.Data(),
+			tx.AccessList(),
+			tx.Deadline(),
+		})
 }
 
 type cancunSigner struct{ londonSigner }

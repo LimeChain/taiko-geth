@@ -33,7 +33,7 @@ type txJSON struct {
 
 	ChainID              *hexutil.Big    `json:"chainId,omitempty"`
 	Nonce                *hexutil.Uint64 `json:"nonce"`
-	Deadline             *hexutil.Uint64 `json:"deadline"`
+	Deadline             *hexutil.Big    `json:"deadline,omitempty"`
 	To                   *common.Address `json:"to"`
 	Gas                  *hexutil.Uint64 `json:"gas"`
 	GasPrice             *hexutil.Big    `json:"gasPrice"`
@@ -158,7 +158,7 @@ func (tx *Transaction) MarshalJSON() ([]byte, error) {
 	case *InclusionPreconfirmationTx:
 		enc.ChainID = (*hexutil.Big)(itx.ChainID)
 		enc.Nonce = (*hexutil.Uint64)(&itx.Nonce)
-		enc.Deadline = (*hexutil.Uint64)(&itx.Deadline)
+		enc.Deadline = (*hexutil.Big)(itx.Deadline.ToBig())
 		enc.To = tx.To()
 		enc.Gas = (*hexutil.Uint64)(&itx.Gas)
 		enc.GasPrice = (*hexutil.Big)(itx.GasPrice)
@@ -441,7 +441,7 @@ func (tx *Transaction) UnmarshalJSON(input []byte) error {
 		if dec.Deadline == nil {
 			return errors.New("missing required field 'deadline' in transaction")
 		}
-		itx.Deadline = uint64(*dec.Deadline)
+		itx.Deadline = uint256.MustFromBig((*big.Int)(dec.Deadline))
 		if dec.To != nil {
 			itx.To = dec.To
 		}

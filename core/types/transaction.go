@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/holiman/uint256"
 )
 
 var (
@@ -86,6 +87,7 @@ type TxData interface {
 	gasFeeCap() *big.Int
 	value() *big.Int
 	nonce() uint64
+	deadline() *big.Int
 	to() *common.Address
 
 	// CHANGE(taiko): anchor transaction related.
@@ -454,11 +456,11 @@ func (tx *Transaction) WithoutBlobTxSidecar() *Transaction {
 }
 
 // BlobGas returns the blob gas limit of the transaction for blob transactions, 0 otherwise.
-func (tx *Transaction) Deadline() uint64 {
+func (tx *Transaction) Deadline() *big.Int {
 	if inclusionPreconfirmationTx, ok := tx.inner.(*InclusionPreconfirmationTx); ok {
 		return inclusionPreconfirmationTx.deadline()
 	}
-	return 0
+	return new(uint256.Int).SetUint64(uint64(0)).ToBig()
 }
 
 // SetTime sets the decoding time of a transaction. This is used by tests to set
