@@ -180,6 +180,7 @@ func DeleteBloombits(db ethdb.Database, bit uint, from uint64, to uint64) {
 	}
 }
 
+// ReadPreconfBlockCursor retrieves the current preconfirmation block cursor.
 func ReadPreconfBlockCursor(db ethdb.Reader) *types.PreconfBlockCursor {
 	data, _ := db.Get(preconfBlockCursorKey)
 	if len(data) == 0 {
@@ -195,6 +196,7 @@ func ReadPreconfBlockCursor(db ethdb.Reader) *types.PreconfBlockCursor {
 	return preconfBlockCursor
 }
 
+// WritePreconfBlockCursor stores the current preconfirmation block cursor.
 func WritePreconfBlockCursor(db ethdb.Writer, entry types.PreconfBlockCursor) {
 	data, err := rlp.EncodeToBytes(entry)
 	if err != nil {
@@ -206,6 +208,7 @@ func WritePreconfBlockCursor(db ethdb.Writer, entry types.PreconfBlockCursor) {
 	}
 }
 
+// DeletePreconfBlockCursor clears the current preconfirmation block cursor.
 func DeletePreconfBlockCursor(db ethdb.KeyValueWriter) {
 	if err := db.Delete(preconfBlockCursorKey); err != nil {
 		log.Crit("Failed to delete preconfirmation block cursor", "err", err)

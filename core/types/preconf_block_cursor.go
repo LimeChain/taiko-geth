@@ -6,6 +6,8 @@ import (
 
 // Cursor that keeps track of the latest virtual block used for preconfirmed txs
 type PreconfBlockCursor struct {
-	Hash   common.Hash
-	Number uint64
+	Hash            common.Hash
+	Number          uint64
+	ProposedTxCount uint64
+	SkipExecutedTx  bool
 }

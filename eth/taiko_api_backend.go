@@ -122,7 +122,15 @@ func (a *TaikoAuthAPIBackend) PreconfirmedTxs() ([]*miner.PreBuiltTxList, error)
 		return []*miner.PreBuiltTxList{}, nil
 	}
 
-	b, err := encodeAndComporeessTxList(block.Transactions())
+	// Fetch txs and skip any that have been already proposed and executed.
+	txs := block.Transactions()
+	if pbCursor.SkipExecutedTx && pbCursor.ProposedTxCount > 0 {
+		anchorTx := txs[:1]
+		txs = txs[1:]
+		txs = append(anchorTx, txs[pbCursor.ProposedTxCount:]...)
+	}
+
+	b, err := encodeAndComporeessTxList(txs)
 	if err != nil {
 		log.Error("Failed to compress block txs", "blockHash", pbCursor.Hash, "blockNum", pbCursor.Number, "err", err)
 		return nil, err
@@ -151,7 +159,15 @@ func (a *TaikoAuthAPIBackend) ProposePreconfirmedTxs() ([]*miner.PreBuiltTxList,
 		return []*miner.PreBuiltTxList{}, nil
 	}
 
-	b, err := encodeAndComporeessTxList(block.Transactions())
+	// Fetch txs and skip any that have been already proposed but not executed.
+	txs := block.Transactions()
+	if pbCursor.ProposedTxCount > 0 {
+		anchorTx := txs[:1]
+		txs = txs[1:]
+		txs = append(anchorTx, txs[pbCursor.ProposedTxCount:]...)
+	}
+
+	b, err := encodeAndComporeessTxList(txs)
 	if err != nil {
 		log.Error("Failed to compress block txs", "blockHash", pbCursor.Hash, "blockNum", pbCursor.Number, "err", err)
 		return nil, err
@@ -193,29 +209,33 @@ func compress(txListBytes []byte) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// TODO(limechain): remove it, return PreconfBlockCursor instead
-type HashAndNumber struct {
-	Hash   common.Hash
-	Number uint64
+func (s *TaikoAPIBackend) GetPreconfBlockCursor() *types.PreconfBlockCursor {
+	log.Warn("TaikoAPIBackend get")
+	return rawdb.ReadPreconfBlockCursor(s.eth.ChainDb())
 }
 
-func (s *TaikoAPIBackend) GetPendingVirtualBlock() HashAndNumber {
+func (s *TaikoAPIBackend) UpdatePreconfBlockCursor(blockHash *common.Hash, blockNumber *math.HexOrDecimal256, proposedTxCount *math.HexOrDecimal256, skipProposedTx *bool) bool {
+	log.Warn("TaikoAPIBackend update")
 	pbCursor := rawdb.ReadPreconfBlockCursor(s.eth.ChainDb())
 
 	if pbCursor == nil {
-		return HashAndNumber{}
+		pbCursor = &types.PreconfBlockCursor{}
 	}
 
-	return HashAndNumber{pbCursor.Hash, pbCursor.Number}
-}
-
-func (s *TaikoAPIBackend) UpdatePendingVirtualBlock(blockHash common.Hash, blockNumber *math.HexOrDecimal256) bool {
-	pbCursor := types.PreconfBlockCursor{
-		Hash:   blockHash,
-		Number: (*big.Int)(blockNumber).Uint64(),
+	if blockHash != nil && *blockHash != (common.Hash{}) {
+		pbCursor.Hash = *blockHash
+	}
+	if blockNumber != nil && (*big.Int)(blockNumber).Uint64() != uint64(0) {
+		pbCursor.Number = (*big.Int)(blockNumber).Uint64()
+	}
+	if proposedTxCount != nil {
+		pbCursor.ProposedTxCount = (*big.Int)(proposedTxCount).Uint64()
+	}
+	if skipProposedTx != nil {
+		pbCursor.SkipExecutedTx = *skipProposedTx
 	}
 
-	rawdb.WritePreconfBlockCursor(s.eth.ChainDb(), pbCursor)
+	rawdb.WritePreconfBlockCursor(s.eth.ChainDb(), *pbCursor)
 
 	err := s.eth.blockchain.SetPreconfirmedBlock()
 	if err != nil {
@@ -225,6 +245,7 @@ func (s *TaikoAPIBackend) UpdatePendingVirtualBlock(blockHash common.Hash, block
 	return true
 }
 
-func (s *TaikoAPIBackend) DeletePendingVirtualBlock() {
+func (s *TaikoAPIBackend) DeletePreconfBlockCursor() {
+	log.Warn("TaikoAPIBackend delete")
 	rawdb.DeletePreconfBlockCursor(s.eth.ChainDb())
 }

@@ -324,7 +324,7 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 	// CHANGE(taiko): check whether --taiko flag is set.
 	isTaiko := api.eth.BlockChain().Config().Taiko
 
-	if payloadAttributes != nil && payloadAttributes.VirtualBlock {
+	if payloadAttributes != nil && payloadAttributes.PreconfBlock {
 		l1Origin, err := ec.NewTaikoAPIBackend(api.eth).HeadL1Origin()
 		if err != nil {
 			log.Info("Failed to get head l1 origin")
@@ -335,8 +335,8 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 
 	setCanonical := true
 	if payloadAttributes != nil {
-		setCanonical = !payloadAttributes.VirtualBlock
-		log.Info("Is virtual block", "flag", payloadAttributes.VirtualBlock)
+		setCanonical = !payloadAttributes.PreconfBlock
+		log.Info("Preconfirmation block", "value", payloadAttributes.PreconfBlock)
 	}
 
 	canonicalhash := rawdb.ReadCanonicalHash(api.eth.ChainDb(), block.NumberU64())
@@ -359,7 +359,6 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 		// generating the payload. It's a special corner case that a few slots are
 		// missing and we are requested to generate the payload in slot.
 	} else if isTaiko { // CHANGE(taiko): reorg is allowed in L2.
-		log.Info("It is Taiko config")
 		if setCanonical {
 			if latestValid, err := api.eth.BlockChain().SetCanonical(block); err != nil {
 				log.Info("Fork choice invalid status")
@@ -412,7 +411,6 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 	if payloadAttributes != nil {
 		// CHANGE(taiko): create a L2 block by Taiko protocol.
 		if isTaiko {
-			log.Info("Taiko block seal")
 			// No need to check payloadAttribute here, because all its fields are
 			// marked as required.
 			block, err := api.eth.Miner().SealBlockWith(
@@ -421,7 +419,6 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 				payloadAttributes.BlockMetadata,
 				payloadAttributes.BaseFeePerGas,
 				payloadAttributes.Withdrawals,
-				payloadAttributes.VirtualBlock,
 			)
 			if err != nil {
 				log.Error("Failed to create sealing block", "err", err)

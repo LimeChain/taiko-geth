@@ -275,21 +275,19 @@ func (bc *BlockChain) GetTransactionLookup(hash common.Hash) (*rawdb.LegacyTxLoo
 		// fetch the current pre-confirmation block (hash, number)
 		// to provide pre-confirmation TX receipts
 		//
-		// TODO(limechain): handle the case between t2-t3 (there is no preconfirmation block)
-		//
-		//     t0    t1     t2    t3   t4        t5    t6
-		//      |     |      |     |    |         |     |
-		//     tx1   tx2    PROP  tx3  tx4       EXEC  tx5
-		// -----|-----|------|-----|----|---------|-----|--> t
-		//      |     |      |     |    |         |     |
-		//     VB    VB     VB    VB    VB        B1   VB
-		//     tx1   tx1   [tx1] [tx1] [tx1]     tx1   tx3
-		//      |    tx2   [tx2] [tx2] [tx2]     tx2   tx4
-		//      |     |      |    tx3   tx3       |    tx5
-		//      |     |      |     |    tx4       |     |
-		// -----|-----|------|-----|-----|--------|-----|-->
-		//      0     0      2     2     2        2     0     - Number of proposed txs to be executed
-		//    false false  false false           true false   - Skip executed txs in next re-build of VB
+		//     t0    t1     t2    t3   t4       t5    t6
+		//      |     |      |     |    |        |     |
+		//     tx1   tx2    PROP  tx3  tx4      EXEC  tx5
+		// -----|-----|------|-----|----|--------|-----|--> t
+		//      |     |      |     |    |        |     |
+		//     VB    VB      |    VB    VB       B1   VB
+		//     tx1   tx1   [tx1] [tx1] [tx1]    tx1   tx3
+		//      |    tx2   [tx2] [tx2] [tx2]    tx2   tx4
+		//      |     |      |    tx3   tx3      |    tx5
+		//      |     |      |     |    tx4      |     |
+		// -----|-----|------|-----|-----|-------|-----|-->
+		//      0     0      2     2     2       2     0    - Number of proposed txs to be executed
+		//    false false  false false           true false - Skip executed txs in next re-build of VB
 
 		pbCursor := rawdb.ReadPreconfBlockCursor(bc.db)
 		if pbCursor != nil {

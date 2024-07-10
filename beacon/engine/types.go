@@ -53,7 +53,7 @@ type PayloadAttributes struct {
 	BlockMetadata *BlockMetadata  `json:"blockMetadata" gencodec:"required"`
 	L1Origin      *rawdb.L1Origin `json:"l1Origin"      gencodec:"required"`
 
-	VirtualBlock bool `json:"virtualBlock" gencodec:"required"`
+	PreconfBlock bool `json:"preconfBlock" gencodec:"required"`
 }
 
 // JSON type overrides for PayloadAttributes.

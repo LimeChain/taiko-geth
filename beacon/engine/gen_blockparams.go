@@ -26,7 +26,7 @@ func (p PayloadAttributes) MarshalJSON() ([]byte, error) {
 		BaseFeePerGas         *big.Int            `json:"baseFeePerGas" gencodec:"required"`
 		BlockMetadata         *BlockMetadata      `json:"blockMetadata" gencodec:"required"`
 		L1Origin              *rawdb.L1Origin     `json:"l1Origin"      gencodec:"required"`
-		VirtualBlock          bool                `json:"virtualBlock" gencodec:"required"`
+		PreconfBlock          bool                `json:"preconfBlock" gencodec:"required"`
 	}
 	var enc PayloadAttributes
 	enc.Timestamp = hexutil.Uint64(p.Timestamp)
@@ -37,7 +37,7 @@ func (p PayloadAttributes) MarshalJSON() ([]byte, error) {
 	enc.BaseFeePerGas = p.BaseFeePerGas
 	enc.BlockMetadata = p.BlockMetadata
 	enc.L1Origin = p.L1Origin
-	enc.VirtualBlock = p.VirtualBlock
+	enc.PreconfBlock = p.PreconfBlock
 	return json.Marshal(&enc)
 }
 
@@ -52,7 +52,7 @@ func (p *PayloadAttributes) UnmarshalJSON(input []byte) error {
 		BaseFeePerGas         *big.Int            `json:"baseFeePerGas" gencodec:"required"`
 		BlockMetadata         *BlockMetadata      `json:"blockMetadata" gencodec:"required"`
 		L1Origin              *rawdb.L1Origin     `json:"l1Origin"      gencodec:"required"`
-		VirtualBlock          *bool               `json:"virtualBlock" gencodec:"required"`
+		PreconfBlock          *bool               `json:"preconfBlock" gencodec:"required"`
 	}
 	var dec PayloadAttributes
 	if err := json.Unmarshal(input, &dec); err != nil {
@@ -88,9 +88,9 @@ func (p *PayloadAttributes) UnmarshalJSON(input []byte) error {
 		return errors.New("missing required field 'l1Origin' for PayloadAttributes")
 	}
 	p.L1Origin = dec.L1Origin
-	if dec.VirtualBlock == nil {
-		return errors.New("missing required field 'virtualBlock' for PayloadAttributes")
+	if dec.PreconfBlock == nil {
+		return errors.New("missing required field 'preconfBlock' for PayloadAttributes")
 	}
-	p.VirtualBlock = *dec.VirtualBlock
+	p.PreconfBlock = *dec.PreconfBlock
 	return nil
 }
