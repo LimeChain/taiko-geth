@@ -18,9 +18,11 @@ package types
 
 import (
 	"bytes"
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
 )
@@ -96,7 +98,13 @@ func (tx *InclusionPreconfirmationTx) to() *common.Address    { return tx.To }
 func (tx *InclusionPreconfirmationTx) deadline() *big.Int     { return tx.Deadline.ToBig() }
 
 func (tx *InclusionPreconfirmationTx) effectiveGasPrice(dst *big.Int, baseFee *big.Int) *big.Int {
-	return dst.Set(tx.GasPrice)
+	fmt.Println("InclusionPreconfirmationTx effectiveGasPrice")
+	if baseFee == nil {
+		return dst.Set(tx.GasPrice)
+	}
+	preconfirmationBaseFeePerGas := dst.Mul(new(uint256.Int).SetUint64(params.InclusionPreconfirmationFeePremium).ToBig(), baseFee)
+	tip := preconfirmationBaseFeePerGas.Div(preconfirmationBaseFeePerGas, new(uint256.Int).SetUint64(100).ToBig())
+	return tip.Add(tip, baseFee)
 }
 
 func (tx *InclusionPreconfirmationTx) rawSignatureValues() (v, r, s *big.Int) {
