@@ -97,6 +97,24 @@ func writeVirtualBlock(db ethdb.Writer, prefix []byte, hash common.Hash, number 
 	}
 }
 
+func DeletePreconfirmedVirtualBlock(db ethdb.KeyValueWriter) {
+	deleteVirtualBlock(db, preconfBlockPrefix)
+}
+
+func DeletePendingVirtualBlock(db ethdb.KeyValueWriter) {
+	deleteVirtualBlock(db, pendingBlockPrefix)
+}
+
+func deleteVirtualBlock(db ethdb.KeyValueWriter, prefix []byte) {
+	if err := db.Delete(append(prefix, virtualBlockHashKey...)); err != nil {
+		log.Crit("Failed to store entry", "err", err)
+	}
+
+	if err := db.Delete(append(prefix, virtualBlockNumberKey...)); err != nil {
+		log.Crit("Failed to store entry", "err", err)
+	}
+}
+
 // writeTxLookupEntry stores a positional metadata for a transaction,
 // enabling hash based transaction and receipt lookups.
 func writeTxLookupEntry(db ethdb.KeyValueWriter, hash common.Hash, numberBytes []byte) {
@@ -140,26 +158,18 @@ func DeleteTxLookupEntries(db ethdb.KeyValueWriter, hashes []common.Hash) {
 // ReadTransaction retrieves a specific transaction from the database, along with
 // its added positional metadata.
 func ReadTransaction(db ethdb.Reader, hash common.Hash) (*types.Transaction, common.Hash, uint64, uint64) {
-	var body *types.Body
-	var blockNumber *uint64
-	var blockHash common.Hash
-
-	blockNumber = ReadTxLookupEntry(db, hash)
-	if blockNumber != nil {
-		blockHash = ReadCanonicalHash(db, *blockNumber)
+	blockNumber := ReadTxLookupEntry(db, hash)
+	if blockNumber == nil {
+		return nil, common.Hash{}, 0, 0
 	}
-	if blockNumber != nil && blockHash != (common.Hash{}) {
-		body = ReadBody(db, blockHash, *blockNumber)
+	blockHash := ReadCanonicalHash(db, *blockNumber)
+	if blockHash == (common.Hash{}) {
+		return nil, common.Hash{}, 0, 0
 	}
+	body := ReadBody(db, blockHash, *blockNumber)
 	if body == nil {
-		// fetch the current pre-confirmation virtual block (hash, number)
-		// to provide pre-confirmation TX receipts
-		blockHash, blockNumber = ReadPreconfirmedVirtualBlock(db)
-		body = ReadBody(db, blockHash, *blockNumber)
-		if body == nil {
-			log.Error("Transaction referenced missing", "number", blockNumber, "hash", blockHash)
-			return nil, common.Hash{}, 0, 0
-		}
+		log.Error("Transaction referenced missing", "number", *blockNumber, "hash", blockHash)
+		return nil, common.Hash{}, 0, 0
 	}
 	for txIndex, tx := range body.Transactions {
 		if tx.Hash() == hash {

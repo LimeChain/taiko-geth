@@ -272,6 +272,36 @@ func (bc *BlockChain) GetTransactionLookup(hash common.Hash) (*rawdb.LegacyTxLoo
 	}
 	tx, blockHash, blockNumber, txIndex := rawdb.ReadTransaction(bc.db, hash)
 	if tx == nil {
+		// fetch the current pre-confirmation virtual block (hash, number)
+		// to provide pre-confirmation TX receipts
+		//
+		// TODO(limechain): handle the case between t2-t3 (there is no pending virtual block)
+		//
+		//     t0    t1    t2    t3    t4
+		//      |     |     |     |     |
+		//     tx1   tx2   prop  tx3   exec
+		// -----|-----|-----|-----|-----|----> t
+		//      |     |     |     |     |
+		//     vb1   vb1   VB1   vb2    B1
+		//     tx1   tx1   tx1   tx3   tx1
+		//           tx2   tx2         tx2
+		blockHash, blockNumber := rawdb.ReadPendingVirtualBlock(bc.db)
+		if (blockHash != common.Hash{}) && blockNumber != nil {
+			body := rawdb.ReadBody(bc.db, blockHash, *blockNumber)
+			if body != nil {
+				for i, tx := range body.Transactions {
+					if tx.Hash() == hash {
+						lookup := &rawdb.LegacyTxLookupEntry{
+							BlockHash:  blockHash,
+							BlockIndex: *blockNumber,
+							Index:      uint64(i),
+						}
+						return lookup, tx, nil
+					}
+				}
+			}
+		}
+
 		progress, err := bc.TxIndexProgress()
 		if err != nil {
 			return nil, nil, nil
@@ -428,6 +458,10 @@ func (bc *BlockChain) SubscribeChainEvent(ch chan<- ChainEvent) event.Subscripti
 // SubscribeChainHeadEvent registers a subscription of ChainHeadEvent.
 func (bc *BlockChain) SubscribeChainHeadEvent(ch chan<- ChainHeadEvent) event.Subscription {
 	return bc.scope.Track(bc.chainHeadFeed.Subscribe(ch))
+}
+
+func (bc *BlockChain) SubscribePreconfirmedHeadEvent(ch chan<- PreconfirmedHeadEvent) event.Subscription {
+	return bc.scope.Track(bc.preconfirmationsHeadFeed.Subscribe(ch))
 }
 
 // SubscribeChainSideEvent registers a subscription of ChainSideEvent.

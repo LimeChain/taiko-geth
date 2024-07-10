@@ -220,15 +220,16 @@ type BlockChain struct {
 	stateCache    state.Database                   // State database to reuse between imports (contains state cache)
 	txIndexer     *txIndexer                       // Transaction indexer, might be nil if not enabled
 
-	hc            *HeaderChain
-	rmLogsFeed    event.Feed
-	chainFeed     event.Feed
-	chainSideFeed event.Feed
-	chainHeadFeed event.Feed
-	logsFeed      event.Feed
-	blockProcFeed event.Feed
-	scope         event.SubscriptionScope
-	genesisBlock  *types.Block
+	hc                       *HeaderChain
+	rmLogsFeed               event.Feed
+	chainFeed                event.Feed
+	chainSideFeed            event.Feed
+	chainHeadFeed            event.Feed
+	preconfirmationsHeadFeed event.Feed
+	logsFeed                 event.Feed
+	blockProcFeed            event.Feed
+	scope                    event.SubscriptionScope
+	genesisBlock             *types.Block
 
 	// This mutex synchronizes chain write operations.
 	// Readers don't need to take it, they can just read the database.
@@ -603,6 +604,23 @@ func (bc *BlockChain) SetHeadWithTimestamp(timestamp uint64) error {
 		return fmt.Errorf("current block missing: #%d [%x..]", header.Number, header.Hash().Bytes()[:4])
 	}
 	bc.chainHeadFeed.Send(ChainHeadEvent{Block: block})
+	return nil
+}
+
+func (bc *BlockChain) SetPreconfirmedBlock() error {
+	blockHash, blockNumber := rawdb.ReadPendingVirtualBlock(bc.db)
+	if blockNumber == nil {
+		return fmt.Errorf("empty pending preconfirmations block number: %s", blockHash)
+	}
+
+	block := rawdb.ReadBlock(bc.db, blockHash, *blockNumber)
+	if block == nil {
+		return fmt.Errorf("empty preconfirmations block: %s", blockHash)
+	}
+
+	log.Info("Sending Preconfirmed block event for tx pool", "blockNum", block.NumberU64(), "hash", block.Hash())
+
+	bc.preconfirmationsHeadFeed.Send(PreconfirmedHeadEvent{Block: block})
 	return nil
 }
 
