@@ -608,14 +608,14 @@ func (bc *BlockChain) SetHeadWithTimestamp(timestamp uint64) error {
 }
 
 func (bc *BlockChain) SetPreconfirmedBlock() error {
-	blockHash, blockNumber := rawdb.ReadPendingVirtualBlock(bc.db)
-	if blockNumber == nil {
-		return fmt.Errorf("empty pending preconfirmations block number: %s", blockHash)
+	pbCursor := rawdb.ReadPreconfBlockCursor(bc.db)
+	if pbCursor == nil {
+		return fmt.Errorf("empty preconfirmation block cursor")
 	}
 
-	block := rawdb.ReadBlock(bc.db, blockHash, *blockNumber)
+	block := rawdb.ReadBlock(bc.db, pbCursor.Hash, pbCursor.Number)
 	if block == nil {
-		return fmt.Errorf("empty preconfirmations block: %s", blockHash)
+		return fmt.Errorf("empty preconfirmations block: %s", pbCursor.Hash)
 	}
 
 	log.Info("Sending Preconfirmed block event for tx pool", "blockNum", block.NumberU64(), "hash", block.Hash())
