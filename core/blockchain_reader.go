@@ -272,28 +272,34 @@ func (bc *BlockChain) GetTransactionLookup(hash common.Hash) (*rawdb.LegacyTxLoo
 	}
 	tx, blockHash, blockNumber, txIndex := rawdb.ReadTransaction(bc.db, hash)
 	if tx == nil {
-		// fetch the current pre-confirmation virtual block (hash, number)
+		// fetch the current pre-confirmation block (hash, number)
 		// to provide pre-confirmation TX receipts
 		//
-		// TODO(limechain): handle the case between t2-t3 (there is no pending virtual block)
+		// TODO(limechain): handle the case between t2-t3 (there is no preconfirmation block)
 		//
-		//     t0    t1    t2    t3    t4
-		//      |     |     |     |     |
-		//     tx1   tx2   prop  tx3   exec
-		// -----|-----|-----|-----|-----|----> t
-		//      |     |     |     |     |
-		//     vb1   vb1   VB1   vb2    B1
-		//     tx1   tx1   tx1   tx3   tx1
-		//           tx2   tx2         tx2
-		blockHash, blockNumber := rawdb.ReadPendingVirtualBlock(bc.db)
-		if (blockHash != common.Hash{}) && blockNumber != nil {
-			body := rawdb.ReadBody(bc.db, blockHash, *blockNumber)
+		//     t0    t1     t2    t3   t4        t5    t6
+		//      |     |      |     |    |         |     |
+		//     tx1   tx2    PROP  tx3  tx4       EXEC  tx5
+		// -----|-----|------|-----|----|---------|-----|--> t
+		//      |     |      |     |    |         |     |
+		//     VB    VB     VB    VB    VB        B1   VB
+		//     tx1   tx1   [tx1] [tx1] [tx1]     tx1   tx3
+		//      |    tx2   [tx2] [tx2] [tx2]     tx2   tx4
+		//      |     |      |    tx3   tx3       |    tx5
+		//      |     |      |     |    tx4       |     |
+		// -----|-----|------|-----|-----|--------|-----|-->
+		//      0     0      2     2     2        2     0     - Number of proposed txs to be executed
+		//    false false  false false           true false   - Skip executed txs in next re-build of VB
+
+		pbCursor := rawdb.ReadPreconfBlockCursor(bc.db)
+		if pbCursor != nil {
+			body := rawdb.ReadBody(bc.db, pbCursor.Hash, pbCursor.Number)
 			if body != nil {
 				for i, tx := range body.Transactions {
 					if tx.Hash() == hash {
 						lookup := &rawdb.LegacyTxLookupEntry{
-							BlockHash:  blockHash,
-							BlockIndex: *blockNumber,
+							BlockHash:  pbCursor.Hash,
+							BlockIndex: pbCursor.Number,
 							Index:      uint64(i),
 						}
 						return lookup, tx, nil

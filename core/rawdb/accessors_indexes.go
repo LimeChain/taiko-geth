@@ -53,68 +53,6 @@ func ReadTxLookupEntry(db ethdb.Reader, hash common.Hash) *uint64 {
 	return &entry.BlockIndex
 }
 
-func ReadPreconfirmedVirtualBlock(db ethdb.Reader) (common.Hash, *uint64) {
-	return readVirtualBlock(db, preconfBlockPrefix)
-}
-
-func ReadPendingVirtualBlock(db ethdb.Reader) (common.Hash, *uint64) {
-	return readVirtualBlock(db, pendingBlockPrefix)
-}
-
-func readVirtualBlock(db ethdb.Reader, prefix []byte) (common.Hash, *uint64) {
-	dataHash, _ := db.Get(append(prefix, virtualBlockHashKey...))
-	if len(dataHash) == 0 {
-		return common.Hash{}, nil
-	}
-	hash := common.BytesToHash(dataHash)
-
-	dataNumber, _ := db.Get(append(prefix, virtualBlockNumberKey...))
-	if len(dataNumber) == 0 {
-		return common.Hash{}, nil
-	}
-	number := new(big.Int).SetBytes(dataNumber).Uint64()
-
-	return hash, &number
-}
-
-func WritePreconfirmedVirtualBlock(db ethdb.Writer, hash common.Hash, number *big.Int) {
-	writeVirtualBlock(db, preconfBlockPrefix, hash, number)
-}
-
-func WritePendingVirtualBlock(db ethdb.Writer, hash common.Hash, number *big.Int) {
-	writeVirtualBlock(db, pendingBlockPrefix, hash, number)
-}
-
-func writeVirtualBlock(db ethdb.Writer, prefix []byte, hash common.Hash, number *big.Int) {
-	hashBytes := hash.Bytes()
-	if err := db.Put(append(prefix, virtualBlockHashKey...), hashBytes); err != nil {
-		log.Crit("Failed to store entry", "err", err)
-	}
-
-	numberBytes := number.Bytes()
-	if err := db.Put(append(prefix, virtualBlockNumberKey...), numberBytes); err != nil {
-		log.Crit("Failed to store entry", "err", err)
-	}
-}
-
-func DeletePreconfirmedVirtualBlock(db ethdb.KeyValueWriter) {
-	deleteVirtualBlock(db, preconfBlockPrefix)
-}
-
-func DeletePendingVirtualBlock(db ethdb.KeyValueWriter) {
-	deleteVirtualBlock(db, pendingBlockPrefix)
-}
-
-func deleteVirtualBlock(db ethdb.KeyValueWriter, prefix []byte) {
-	if err := db.Delete(append(prefix, virtualBlockHashKey...)); err != nil {
-		log.Crit("Failed to store entry", "err", err)
-	}
-
-	if err := db.Delete(append(prefix, virtualBlockNumberKey...)); err != nil {
-		log.Crit("Failed to store entry", "err", err)
-	}
-}
-
 // writeTxLookupEntry stores a positional metadata for a transaction,
 // enabling hash based transaction and receipt lookups.
 func writeTxLookupEntry(db ethdb.KeyValueWriter, hash common.Hash, numberBytes []byte) {
@@ -239,5 +177,37 @@ func DeleteBloombits(db ethdb.Database, bit uint, from uint64, to uint64) {
 	}
 	if it.Error() != nil {
 		log.Crit("Failed to delete bloom bits", "err", it.Error())
+	}
+}
+
+func ReadPreconfBlockCursor(db ethdb.Reader) *types.PreconfBlockCursor {
+	data, _ := db.Get(preconfBlockCursorKey)
+	if len(data) == 0 {
+		return nil
+	}
+
+	preconfBlockCursor := new(types.PreconfBlockCursor)
+	if err := rlp.DecodeBytes(data, preconfBlockCursor); err != nil {
+		log.Error("Invalid preconfirmation block cursor RLP", "err", err)
+		return nil
+	}
+
+	return preconfBlockCursor
+}
+
+func WritePreconfBlockCursor(db ethdb.Writer, entry types.PreconfBlockCursor) {
+	data, err := rlp.EncodeToBytes(entry)
+	if err != nil {
+		log.Crit("Failed to RLP encode preconfirmation block cursor", "err", err)
+	}
+
+	if err := db.Put(preconfBlockCursorKey, data); err != nil {
+		log.Crit("Failed to store preconfirmation block cursor", "err", err)
+	}
+}
+
+func DeletePreconfBlockCursor(db ethdb.KeyValueWriter) {
+	if err := db.Delete(preconfBlockCursorKey); err != nil {
+		log.Crit("Failed to delete preconfirmation block cursor", "err", err)
 	}
 }
