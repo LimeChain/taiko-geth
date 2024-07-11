@@ -37,7 +37,7 @@ type InclusionPreconfirmationTx struct {
 	Value      *big.Int        // wei amount
 	Data       []byte          // contract invocation input data
 	AccessList AccessList      // EIP-2930 access list
-	Deadline   *uint256.Int    // check if the deadline has passed before committing to it
+	Deadline   *big.Int        // check if the deadline has passed before committing to it
 	V, R, S    *big.Int        // signature values
 }
 
@@ -45,7 +45,7 @@ type InclusionPreconfirmationTx struct {
 func (tx *InclusionPreconfirmationTx) copy() TxData {
 	cpy := &InclusionPreconfirmationTx{
 		Nonce:    tx.Nonce,
-		Deadline: new(uint256.Int),
+		Deadline: new(big.Int),
 		To:       copyAddressPtr(tx.To),
 		Data:     common.CopyBytes(tx.Data),
 		Gas:      tx.Gas,
@@ -95,7 +95,7 @@ func (tx *InclusionPreconfirmationTx) gasFeeCap() *big.Int    { return tx.GasPri
 func (tx *InclusionPreconfirmationTx) value() *big.Int        { return tx.Value }
 func (tx *InclusionPreconfirmationTx) nonce() uint64          { return tx.Nonce }
 func (tx *InclusionPreconfirmationTx) to() *common.Address    { return tx.To }
-func (tx *InclusionPreconfirmationTx) deadline() *big.Int     { return tx.Deadline.ToBig() }
+func (tx *InclusionPreconfirmationTx) deadline() *big.Int     { return tx.Deadline }
 
 func (tx *InclusionPreconfirmationTx) effectiveGasPrice(dst *big.Int, baseFee *big.Int) *big.Int {
 	fmt.Println("InclusionPreconfirmationTx effectiveGasPrice")
@@ -124,17 +124,17 @@ func (tx *InclusionPreconfirmationTx) decode(input []byte) error {
 }
 
 func (tx *DynamicFeeTx) deadline() *big.Int {
-	return new(uint256.Int).SetUint64(uint64(0)).ToBig()
+	return big.NewInt(0)
 }
 
 func (tx *LegacyTx) deadline() *big.Int {
-	return new(uint256.Int).SetUint64(uint64(0)).ToBig()
+	return big.NewInt(0)
 }
 
 func (tx *AccessListTx) deadline() *big.Int {
-	return new(uint256.Int).SetUint64(uint64(0)).ToBig()
+	return big.NewInt(0)
 }
 
 func (tx *BlobTx) deadline() *big.Int {
-	return new(uint256.Int).SetUint64(uint64(0)).ToBig()
+	return big.NewInt(0)
 }

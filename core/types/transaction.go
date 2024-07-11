@@ -29,7 +29,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/holiman/uint256"
 )
 
 var (
@@ -455,12 +454,12 @@ func (tx *Transaction) WithoutBlobTxSidecar() *Transaction {
 	return cpy
 }
 
-// BlobGas returns the blob gas limit of the transaction for blob transactions, 0 otherwise.
+// Deadline returns the deadline of the transaction for inclusion preconfirmation transactions, 0 otherwise.
 func (tx *Transaction) Deadline() *big.Int {
 	if inclusionPreconfirmationTx, ok := tx.inner.(*InclusionPreconfirmationTx); ok {
 		return inclusionPreconfirmationTx.deadline()
 	}
-	return new(uint256.Int).SetUint64(uint64(0)).ToBig()
+	return big.NewInt(0)
 }
 
 // SetTime sets the decoding time of a transaction. This is used by tests to set

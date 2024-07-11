@@ -11,7 +11,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/holiman/uint256"
 )
 
 func main() {
@@ -47,7 +46,7 @@ func main() {
 	toAddress := common.HexToAddress("0x09Ed17fC963d8B14BD8669B48B07B6ba9494979d")
 	var data []byte
 	chainID := big.NewInt(167001) // mainnet
-	deadline := uint256.NewInt(22)
+	deadline := big.NewInt(22)
 
 	tx := types.NewTx(&types.InclusionPreconfirmationTx{
 		Nonce:    nonce,
