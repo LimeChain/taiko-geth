@@ -38,24 +38,24 @@ type sigCache struct {
 
 // MakeSigner returns a Signer based on the given chain config and block number.
 func MakeSigner(config *params.ChainConfig, blockNumber *big.Int, blockTime uint64) Signer {
-	// TODO: add preconf fork to the switch statement
-	return NewPreconfSigner(config.ChainID)
-	// var signer Signer
-	// switch {
-	// case config.IsCancun(blockNumber, blockTime):
-	// 	signer = NewCancunSigner(config.ChainID)
-	// case config.IsLondon(blockNumber):
-	// 	signer = NewLondonSigner(config.ChainID)
-	// case config.IsBerlin(blockNumber):
-	// 	signer = NewEIP2930Signer(config.ChainID)
-	// case config.IsEIP155(blockNumber):
-	// 	signer = NewEIP155Signer(config.ChainID)
-	// case config.IsHomestead(blockNumber):
-	// 	signer = HomesteadSigner{}
-	// default:
-	// 	signer = FrontierSigner{}
-	// }
-	// return signer
+	var signer Signer
+	switch {
+	case config.IsPreconf(blockNumber, blockTime):
+		signer = NewPreconfSigner(config.ChainID)
+	case config.IsCancun(blockNumber, blockTime):
+		signer = NewCancunSigner(config.ChainID)
+	case config.IsLondon(blockNumber):
+		signer = NewLondonSigner(config.ChainID)
+	case config.IsBerlin(blockNumber):
+		signer = NewEIP2930Signer(config.ChainID)
+	case config.IsEIP155(blockNumber):
+		signer = NewEIP155Signer(config.ChainID)
+	case config.IsHomestead(blockNumber):
+		signer = HomesteadSigner{}
+	default:
+		signer = FrontierSigner{}
+	}
+	return signer
 }
 
 // LatestSigner returns the 'most permissive' Signer available for the given chain
@@ -66,23 +66,24 @@ func MakeSigner(config *params.ChainConfig, blockNumber *big.Int, blockTime uint
 // Use this in transaction-handling code where the current block number is unknown. If you
 // have the current block number available, use MakeSigner instead.
 func LatestSigner(config *params.ChainConfig) Signer {
-	// TODO: add preconf fork to the switch statement
-	return NewPreconfSigner(config.ChainID)
-	// if config.ChainID != nil {
-	// 	if config.CancunTime != nil {
-	// 		return NewCancunSigner(config.ChainID)
-	// 	}
-	// 	if config.LondonBlock != nil {
-	// 		return NewLondonSigner(config.ChainID)
-	// 	}
-	// 	if config.BerlinBlock != nil {
-	// 		return NewEIP2930Signer(config.ChainID)
-	// 	}
-	// 	if config.EIP155Block != nil {
-	// 		return NewEIP155Signer(config.ChainID)
-	// 	}
-	// }
-	// return HomesteadSigner{}
+	if config.ChainID != nil {
+		if config.PreconfTime != nil {
+			return NewPreconfSigner(config.ChainID)
+		}
+		if config.CancunTime != nil {
+			return NewCancunSigner(config.ChainID)
+		}
+		if config.LondonBlock != nil {
+			return NewLondonSigner(config.ChainID)
+		}
+		if config.BerlinBlock != nil {
+			return NewEIP2930Signer(config.ChainID)
+		}
+		if config.EIP155Block != nil {
+			return NewEIP155Signer(config.ChainID)
+		}
+	}
+	return HomesteadSigner{}
 }
 
 // LatestSignerForChainID returns the 'most permissive' Signer available. Specifically,
@@ -96,7 +97,6 @@ func LatestSignerForChainID(chainID *big.Int) Signer {
 	if chainID == nil {
 		return HomesteadSigner{}
 	}
-	// TODO: add preconf fork name instead of PreconfSigner
 	return NewPreconfSigner(chainID)
 }
 
