@@ -197,12 +197,10 @@ func (api *ConsensusAPI) ForkchoiceUpdatedV2(update engine.ForkchoiceStateV1, pa
 			if params.Withdrawals != nil {
 				return engine.STATUS_INVALID, engine.InvalidParams.With(errors.New("withdrawals before shanghai"))
 			}
-		case forks.Shanghai:
+		case forks.Preconf:
 			if params.Withdrawals == nil {
 				return engine.STATUS_INVALID, engine.InvalidParams.With(errors.New("missing withdrawals"))
 			}
-		case forks.Preconf:
-			// no-op
 		default:
 			return engine.STATUS_INVALID, engine.UnsupportedFork.With(errors.New("forkchoiceUpdatedV2 must only be called with paris and shanghai payloads"))
 		}
