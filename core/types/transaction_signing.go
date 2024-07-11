@@ -182,7 +182,6 @@ type Signer interface {
 
 type preconfSigner struct{ cancunSigner }
 
-// TODO: add preconf fork name instead of PreconfSigner
 func NewPreconfSigner(chainId *big.Int) Signer {
 	return preconfSigner{cancunSigner{londonSigner{eip2930Signer{NewEIP155Signer(chainId)}}}}
 }
