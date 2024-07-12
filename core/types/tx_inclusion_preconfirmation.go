@@ -18,10 +18,13 @@ package types
 
 import (
 	"bytes"
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/holiman/uint256"
 )
 
 // InclusionPreconfirmationTx is the data of EIP-2930 access list transactions.
@@ -34,16 +37,18 @@ type InclusionPreconfirmationTx struct {
 	Value      *big.Int        // wei amount
 	Data       []byte          // contract invocation input data
 	AccessList AccessList      // EIP-2930 access list
+	Deadline   *big.Int        // check if the deadline has passed before committing to it
 	V, R, S    *big.Int        // signature values
 }
 
 // copy creates a deep copy of the transaction data and initializes all fields.
 func (tx *InclusionPreconfirmationTx) copy() TxData {
 	cpy := &InclusionPreconfirmationTx{
-		Nonce: tx.Nonce,
-		To:    copyAddressPtr(tx.To),
-		Data:  common.CopyBytes(tx.Data),
-		Gas:   tx.Gas,
+		Nonce:    tx.Nonce,
+		Deadline: new(big.Int),
+		To:       copyAddressPtr(tx.To),
+		Data:     common.CopyBytes(tx.Data),
+		Gas:      tx.Gas,
 		// These are copied below.
 		AccessList: make(AccessList, len(tx.AccessList)),
 		Value:      new(big.Int),
@@ -72,6 +77,9 @@ func (tx *InclusionPreconfirmationTx) copy() TxData {
 	if tx.S != nil {
 		cpy.S.Set(tx.S)
 	}
+	if tx.Deadline != nil {
+		cpy.Deadline.Set(tx.Deadline)
+	}
 	return cpy
 }
 
@@ -87,9 +95,16 @@ func (tx *InclusionPreconfirmationTx) gasFeeCap() *big.Int    { return tx.GasPri
 func (tx *InclusionPreconfirmationTx) value() *big.Int        { return tx.Value }
 func (tx *InclusionPreconfirmationTx) nonce() uint64          { return tx.Nonce }
 func (tx *InclusionPreconfirmationTx) to() *common.Address    { return tx.To }
+func (tx *InclusionPreconfirmationTx) deadline() *big.Int     { return tx.Deadline }
 
 func (tx *InclusionPreconfirmationTx) effectiveGasPrice(dst *big.Int, baseFee *big.Int) *big.Int {
-	return dst.Set(tx.GasPrice)
+	fmt.Println("InclusionPreconfirmationTx effectiveGasPrice")
+	if baseFee == nil {
+		return dst.Set(tx.GasPrice)
+	}
+	preconfirmationBaseFeePerGas := dst.Mul(new(uint256.Int).SetUint64(params.InclusionPreconfirmationFeePremium).ToBig(), baseFee)
+	tip := preconfirmationBaseFeePerGas.Div(preconfirmationBaseFeePerGas, new(uint256.Int).SetUint64(100).ToBig())
+	return tip.Add(tip, baseFee)
 }
 
 func (tx *InclusionPreconfirmationTx) rawSignatureValues() (v, r, s *big.Int) {
@@ -106,4 +121,20 @@ func (tx *InclusionPreconfirmationTx) encode(b *bytes.Buffer) error {
 
 func (tx *InclusionPreconfirmationTx) decode(input []byte) error {
 	return rlp.DecodeBytes(input, tx)
+}
+
+func (tx *DynamicFeeTx) deadline() *big.Int {
+	return big.NewInt(0)
+}
+
+func (tx *LegacyTx) deadline() *big.Int {
+	return big.NewInt(0)
+}
+
+func (tx *AccessListTx) deadline() *big.Int {
+	return big.NewInt(0)
+}
+
+func (tx *BlobTx) deadline() *big.Int {
+	return big.NewInt(0)
 }

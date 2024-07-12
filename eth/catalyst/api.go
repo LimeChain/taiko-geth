@@ -197,7 +197,7 @@ func (api *ConsensusAPI) ForkchoiceUpdatedV2(update engine.ForkchoiceStateV1, pa
 			if params.Withdrawals != nil {
 				return engine.STATUS_INVALID, engine.InvalidParams.With(errors.New("withdrawals before shanghai"))
 			}
-		case forks.Shanghai:
+		case forks.Preconf:
 			if params.Withdrawals == nil {
 				return engine.STATUS_INVALID, engine.InvalidParams.With(errors.New("missing withdrawals"))
 			}
@@ -225,8 +225,8 @@ func (api *ConsensusAPI) ForkchoiceUpdatedV3(update engine.ForkchoiceStateV1, pa
 		if params.BeaconRoot == nil {
 			return engine.STATUS_INVALID, engine.InvalidParams.With(errors.New("missing beacon root"))
 		}
-		if api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Cancun {
-			return engine.STATUS_INVALID, engine.UnsupportedFork.With(errors.New("forkchoiceUpdatedV3 must only be called for cancun payloads"))
+		if api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Preconf {
+			return engine.STATUS_INVALID, engine.UnsupportedFork.With(errors.New("forkchoiceUpdatedV3 must only be called for preconf payloads"))
 		}
 	}
 	// TODO(matt): the spec requires that fcu is applied when called on a valid
@@ -581,7 +581,7 @@ func (api *ConsensusAPI) NewPayloadV2(params engine.ExecutableData) (engine.Payl
 	if api.eth.BlockChain().Config().IsCancun(api.eth.BlockChain().Config().LondonBlock, params.Timestamp) {
 		return engine.PayloadStatusV1{Status: engine.INVALID}, engine.InvalidParams.With(errors.New("can't use newPayloadV2 post-cancun"))
 	}
-	if api.eth.BlockChain().Config().LatestFork(params.Timestamp) == forks.Shanghai {
+	if api.eth.BlockChain().Config().LatestFork(params.Timestamp) == forks.Preconf {
 		if params.Withdrawals == nil &&
 			(api.eth.BlockChain().Config().Taiko && params.WithdrawalsHash == (common.Hash{})) {
 			return engine.PayloadStatusV1{Status: engine.INVALID}, engine.InvalidParams.With(errors.New("nil withdrawals post-shanghai"))
@@ -619,8 +619,8 @@ func (api *ConsensusAPI) NewPayloadV3(params engine.ExecutableData, versionedHas
 		return engine.PayloadStatusV1{Status: engine.INVALID}, engine.InvalidParams.With(errors.New("nil beaconRoot post-cancun"))
 	}
 
-	if api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Cancun {
-		return engine.PayloadStatusV1{Status: engine.INVALID}, engine.UnsupportedFork.With(errors.New("newPayloadV3 must only be called for cancun payloads"))
+	if api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Preconf {
+		return engine.PayloadStatusV1{Status: engine.INVALID}, engine.UnsupportedFork.With(errors.New("newPayloadV3 must only be called for preconf payloads"))
 	}
 	return api.newPayload(params, versionedHashes, beaconRoot)
 }

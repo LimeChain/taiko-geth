@@ -175,6 +175,8 @@ const (
 	MaxBlobGasPerBlock          = 6 * BlobTxBlobGasPerBlob // Maximum consumable blob gas for data blobs per block
 
 	BlobTxHashVersion = 0x01 // CHANGE(taiko): Version byte of the commitment hash
+
+	InclusionPreconfirmationFeePremium uint64 = 3
 )
 
 // Gas discount table for BLS12-381 G1 and G2 multi exponentiation operations
