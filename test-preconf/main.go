@@ -68,5 +68,5 @@ func main() {
 		log.Fatalf("Failed to send transaction: %v", err)
 	}
 
-	fmt.Printf("Transaction sent: %s", signedTx.Hash().Hex())
+	fmt.Printf("Transaction sent: %s\n", signedTx.Hash().Hex())
 }

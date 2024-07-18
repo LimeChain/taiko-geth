@@ -57,9 +57,6 @@ type BlockChain interface {
 
 	// SubscribeChainHeadEvent subscribes to new blocks being added to the chain.
 	SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent) event.Subscription
-
-	// SubscribePreconfirmedHeadEvent subscribes to new preconfirmed blocks added
-	SubscribePreconfirmedHeadEvent(ch chan<- core.PreconfirmedHeadEvent) event.Subscription
 }
 
 // TxPool is an aggregator for various transaction specific pools, collectively
@@ -187,8 +184,8 @@ func (p *TxPool) loop(head *types.Header, chain BlockChain) {
 
 	// Subscribe to chain head events to trigger subpool resets
 	var (
-		newHeadCh  = make(chan core.PreconfirmedHeadEvent)
-		newHeadSub = chain.SubscribePreconfirmedHeadEvent(newHeadCh)
+		newHeadCh  = make(chan core.ChainHeadEvent)
+		newHeadSub = chain.SubscribeChainHeadEvent(newHeadCh)
 	)
 	defer newHeadSub.Unsubscribe()
 

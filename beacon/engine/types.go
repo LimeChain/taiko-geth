@@ -52,8 +52,6 @@ type PayloadAttributes struct {
 	BaseFeePerGas *big.Int        `json:"baseFeePerGas" gencodec:"required"`
 	BlockMetadata *BlockMetadata  `json:"blockMetadata" gencodec:"required"`
 	L1Origin      *rawdb.L1Origin `json:"l1Origin"      gencodec:"required"`
-
-	VirtualBlock bool `json:"virtualBlock" gencodec:"required"`
 }
 
 // JSON type overrides for PayloadAttributes.

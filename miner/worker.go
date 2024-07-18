@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -240,6 +241,136 @@ type worker struct {
 	skipSealHook func(*task) bool                   // Method to decide whether skipping the sealing.
 	fullTaskHook func()                             // Method to call before pushing the full sealing task.
 	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
+
+	// Tx list state
+	txListStateMutex sync.RWMutex
+	pendingTxCache   map[common.Hash]bool
+	proposedTxCache  map[common.Hash]bool
+}
+
+func (w *worker) loadPendingTxInCache(txListState *types.TxListState) {
+	if w.pendingTxCache != nil {
+		return
+	}
+
+	if txListState == nil || w.pendingTxCache == nil {
+		w.pendingTxCache = make(map[common.Hash]bool)
+		return
+	}
+
+	for _, tx := range txListState.PendingTxs {
+		w.pendingTxCache[tx.Hash()] = true
+	}
+}
+
+func (w *worker) loadProposedTxInCache(txListState *types.TxListState) {
+	if w.proposedTxCache != nil {
+		return
+	}
+
+	if txListState == nil || w.proposedTxCache == nil {
+		w.proposedTxCache = make(map[common.Hash]bool)
+		return
+	}
+
+	for _, tx := range txListState.ProposedTxs {
+		w.proposedTxCache[tx.Hash()] = true
+	}
+}
+
+func (w *worker) UpdatePendingOfTxListState(txs []*types.Transaction, b []byte, env *environment) *types.TxListState {
+	w.txListStateMutex.Lock()
+	defer w.txListStateMutex.Unlock()
+
+	db := w.eth.BlockChain().DB()
+	txListState := rawdb.ReadTxListState(db)
+	if txListState == nil {
+		log.Error("Empty tx list state, initialize it")
+		txListState = &types.TxListState{}
+	}
+
+	w.loadPendingTxInCache(txListState)
+
+	for _, tx := range txs {
+		if !w.pendingTxCache[tx.Hash()] {
+			txListState.PendingTxs = append(txListState.PendingTxs, tx)
+			w.pendingTxCache[tx.Hash()] = true
+			log.Warn("Add pending tx to the list")
+		} else {
+			log.Warn("Skip pending tx, already in list")
+		}
+	}
+
+	// TODO: need to handle multiple tx lists
+	txListState.EstimatedGasUsed = env.header.GasLimit - env.gasPool.Gas()
+	txListState.BytesLength = uint64(len(b))
+
+	rawdb.WriteTxListState(db, txListState)
+
+	return txListState
+}
+
+func (w *worker) ProposeFromTxListState() *types.TxListState {
+	w.txListStateMutex.Lock()
+	defer w.txListStateMutex.Unlock()
+
+	db := w.eth.BlockChain().DB()
+	txListState := rawdb.ReadTxListState(db)
+	w.loadProposedTxInCache(txListState)
+
+	// Do not reset the 'NewTxs' field to handle the case of 'driver' failures.
+	// Each 'propose' call will accumulate until the 'driver' finally executes
+	// and resets the state.
+	// txListState.NewTxs = []*types.Transaction{}
+
+	for _, tx := range txListState.PendingTxs {
+		if !w.proposedTxCache[tx.Hash()] {
+			txListState.NewTxs = append(txListState.NewTxs, tx)
+			txListState.ProposedTxs = append(txListState.ProposedTxs, tx)
+			w.proposedTxCache[tx.Hash()] = true
+			log.Info("Add pending tx to be proposed")
+		} else {
+			log.Info("Skip pending tx, already proposed", "hash", tx.Hash())
+		}
+	}
+
+	rawdb.WriteTxListState(db, txListState)
+
+	return txListState
+}
+
+func (w *worker) ResetTxListState() {
+	w.txListStateMutex.Lock()
+	defer w.txListStateMutex.Unlock()
+
+	db := w.eth.BlockChain().DB()
+	txListState := rawdb.ReadTxListState(db)
+	if txListState == nil {
+		// initialize tx list state
+		rawdb.WriteTxListState(db, &types.TxListState{})
+		return
+	}
+
+	// TODO: load both in one go
+	w.loadPendingTxInCache(txListState)
+	w.loadProposedTxInCache(txListState)
+
+	newPendingTxs := []*types.Transaction{}
+
+	for _, tx := range txListState.PendingTxs {
+		if !w.proposedTxCache[tx.Hash()] {
+			newPendingTxs = append(newPendingTxs, tx)
+		}
+	}
+
+	if len(newPendingTxs) > 0 {
+		log.Error("There are new pending txs not in proposed list", "txs", newPendingTxs)
+	}
+	rawdb.WriteTxListState(db, &types.TxListState{})
+
+	// TODO: leave only the txs that are not in the proposed list
+
+	log.Warn("Tx list state has been reset")
 }
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
@@ -944,6 +1075,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 
+	log.Error("Prepare work ...")
 	// Find the parent block for sealing task
 	parent := w.chain.CurrentBlock()
 	if genParams.parentHash != (common.Hash{}) {
@@ -1091,6 +1223,7 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) err
 
 // generateWork generates a sealing block based on the given parameters.
 func (w *worker) generateWork(params *generateParams) *newPayloadResult {
+	log.Info("Generating work ...")
 	work, err := w.prepareWork(params)
 	if err != nil {
 		return &newPayloadResult{err: err}

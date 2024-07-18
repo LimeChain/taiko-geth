@@ -97,7 +97,8 @@ var (
 	snapSyncStatusFlagKey = []byte("SnapSyncStatus")
 
 	// InclusionPreconfirmation virtual blocks
-	preconfBlockCursorKey = []byte("PreconfirmationBlockCursor")
+	txListStatePrefixKey      = []byte("txls")
+	preconfTxReceiptPrefixKey = []byte("ptxr")
 
 	// Data item prefixes (use single byte to avoid mixing data types, avoid `i`, used for indexes).
 	headerPrefix       = []byte("h") // headerPrefix + num (uint64 big endian) + hash -> header
@@ -341,4 +342,15 @@ func ResolveStorageTrieNode(key []byte) (bool, common.Hash, []byte) {
 func IsStorageTrieNode(key []byte) bool {
 	ok, _, _ := ResolveStorageTrieNode(key)
 	return ok
+}
+
+// TODO: it is a single record, no need for an id
+func txListStateKey(id uint64) []byte {
+	enc := make([]byte, 8)
+	binary.BigEndian.PutUint64(enc, id)
+	return append(txListStatePrefixKey, enc...)
+}
+
+func preconfTxReceiptKey(txHash []byte) []byte {
+	return append(preconfTxReceiptPrefixKey, txHash...)
 }

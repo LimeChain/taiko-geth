@@ -220,16 +220,15 @@ type BlockChain struct {
 	stateCache    state.Database                   // State database to reuse between imports (contains state cache)
 	txIndexer     *txIndexer                       // Transaction indexer, might be nil if not enabled
 
-	hc                       *HeaderChain
-	rmLogsFeed               event.Feed
-	chainFeed                event.Feed
-	chainSideFeed            event.Feed
-	chainHeadFeed            event.Feed
-	preconfirmationsHeadFeed event.Feed
-	logsFeed                 event.Feed
-	blockProcFeed            event.Feed
-	scope                    event.SubscriptionScope
-	genesisBlock             *types.Block
+	hc            *HeaderChain
+	rmLogsFeed    event.Feed
+	chainFeed     event.Feed
+	chainSideFeed event.Feed
+	chainHeadFeed event.Feed
+	logsFeed      event.Feed
+	blockProcFeed event.Feed
+	scope         event.SubscriptionScope
+	genesisBlock  *types.Block
 
 	// This mutex synchronizes chain write operations.
 	// Readers don't need to take it, they can just read the database.
@@ -604,23 +603,6 @@ func (bc *BlockChain) SetHeadWithTimestamp(timestamp uint64) error {
 		return fmt.Errorf("current block missing: #%d [%x..]", header.Number, header.Hash().Bytes()[:4])
 	}
 	bc.chainHeadFeed.Send(ChainHeadEvent{Block: block})
-	return nil
-}
-
-func (bc *BlockChain) SetPreconfirmedBlock() error {
-	pbCursor := rawdb.ReadPreconfBlockCursor(bc.db)
-	if pbCursor == nil {
-		return fmt.Errorf("empty preconfirmation block cursor")
-	}
-
-	block := rawdb.ReadBlock(bc.db, pbCursor.Hash, pbCursor.Number)
-	if block == nil {
-		return fmt.Errorf("empty preconfirmations block: %s", pbCursor.Hash)
-	}
-
-	log.Info("Sending Preconfirmed block event for tx pool", "blockNum", block.NumberU64(), "hash", block.Hash())
-
-	bc.preconfirmationsHeadFeed.Send(PreconfirmedHeadEvent{Block: block})
 	return nil
 }
 
@@ -2476,4 +2458,8 @@ func (bc *BlockChain) SetTrieFlushInterval(interval time.Duration) {
 // GetTrieFlushInterval gets the in-memory tries flushAlloc interval
 func (bc *BlockChain) GetTrieFlushInterval() time.Duration {
 	return time.Duration(bc.flushInterval.Load())
+}
+
+func (bc *BlockChain) DB() ethdb.Database {
+	return bc.db
 }

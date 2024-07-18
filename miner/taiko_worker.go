@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -27,26 +28,26 @@ import (
 // 2. The total gas used should not exceed the given blockMaxGasLimit
 // 3. The total bytes used should not exceed the given maxBytesPerTxList
 // 4. The total number of transactions lists should not exceed the given maxTransactionsLists
-func (w *worker) BuildTransactionsLists(
+func (w *worker) BuildTransactionList(
 	beneficiary common.Address,
 	baseFee *big.Int,
 	blockMaxGasLimit uint64,
 	maxBytesPerTxList uint64,
 	localAccounts []string,
 	maxTransactionsLists uint64,
-) ([]*PreBuiltTxList, error) {
-	var (
-		txsLists    []*PreBuiltTxList
-		currentHead = w.chain.CurrentBlock()
-	)
+) error {
+	log.Warn("Start building tx list", "baseFee", baseFee, "blockMaxGasLimit", blockMaxGasLimit, "maxBytesPerTxList", maxBytesPerTxList, "localAccounts", localAccounts, "maxTransactionsLists", maxTransactionsLists)
 
+	currentHead := w.chain.CurrentBlock()
 	if currentHead == nil {
-		return nil, fmt.Errorf("failed to find current head")
+		return fmt.Errorf("failed to find current head")
 	}
 
 	// Check if tx pool is empty at first.
 	if len(w.eth.TxPool().Pending(txpool.PendingFilter{BaseFee: uint256.MustFromBig(baseFee), OnlyPlainTxs: true})) == 0 {
-		return txsLists, nil
+		// TODO: check if there is a better place to reset
+		w.ResetTxListState()
+		return nil
 	}
 
 	params := &generateParams{
@@ -61,7 +62,7 @@ func (w *worker) BuildTransactionsLists(
 
 	env, err := w.prepareWork(params)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer env.discard()
 
@@ -72,7 +73,7 @@ func (w *worker) BuildTransactionsLists(
 		localTxs, remoteTxs = w.getPendingTxs(localAccounts, baseFee)
 	)
 
-	commitTxs := func() (*PreBuiltTxList, error) {
+	commitTxs := func() (*types.TxListState, error) {
 		env.tcount = 0
 		env.txs = []*types.Transaction{}
 		env.gasPool = new(core.GasPool).AddGas(blockMaxGasLimit)
@@ -102,27 +103,43 @@ func (w *worker) BuildTransactionsLists(
 			return nil, err
 		}
 
-		return &PreBuiltTxList{
-			TxList:           env.txs,
-			EstimatedGasUsed: env.header.GasLimit - env.gasPool.Gas(),
-			BytesLength:      uint64(len(b)),
-		}, nil
+		txListState := w.UpdatePendingOfTxListState(env.txs, b, env)
+		return txListState, nil
 	}
 
 	for i := 0; i < int(maxTransactionsLists); i++ {
 		res, err := commitTxs()
 		if err != nil {
-			return nil, err
+			return err
 		}
 
-		if len(res.TxList) == 0 {
+		if len(res.PendingTxs) == 0 {
 			break
 		}
-
-		txsLists = append(txsLists, res)
 	}
 
-	return txsLists, nil
+	// Store each receipt under the tx hash to provide preconfirmations
+	db := w.eth.BlockChain().DB()
+
+	for _, receipt := range env.receipts {
+		tx := env.txs[receipt.TransactionIndex]
+
+		if tx.Type() == types.InclusionPreconfirmationTxType {
+			signer := types.MakeSigner(w.chainConfig, receipt.BlockNumber, env.header.Time)
+			from, _ := types.Sender(signer, tx)
+			to := tx.To()
+			rawdb.WritePreconfReceipt(db, receipt, &from, to)
+			log.Info("Store inclusion preconfirmation tx receipt", "index", receipt.TransactionIndex, "hash", tx.Hash().String(), "from", from.String(), "to", to.String())
+		}
+	}
+
+	txListState := rawdb.ReadTxListState(db)
+	if txListState != nil {
+		log.Warn("Tx list pending", "count", len(txListState.PendingTxs), "txs", txListState.PendingTxs)
+		log.Warn("Tx list proposed", "count", len(txListState.ProposedTxs), "txs", txListState.ProposedTxs)
+		log.Warn("Tx list new", "count", len(txListState.NewTxs), "txs", txListState.NewTxs)
+	}
+	return nil
 }
 
 // sealBlockWith mines and seals a block with the given block metadata.
@@ -132,7 +149,6 @@ func (w *worker) sealBlockWith(
 	blkMeta *engine.BlockMetadata,
 	baseFeePerGas *big.Int,
 	withdrawals types.Withdrawals,
-	virtualBlock bool,
 ) (*types.Block, error) {
 	// Decode transactions bytes.
 	var txs types.Transactions
@@ -184,14 +200,14 @@ func (w *worker) sealBlockWith(
 		}
 		sender, err := types.LatestSignerForChainID(w.chainConfig.ChainID).Sender(tx)
 		if err != nil {
-			log.Info("1 Skip an invalid proposed transaction", "hash", tx.Hash(), "reason", err)
+			log.Info("Skip an invalid proposed transaction", "hash", tx.Hash(), "reason", err)
 			continue
 		}
 
 		env.state.Prepare(rules, sender, blkMeta.Beneficiary, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
 		env.state.SetTxContext(tx.Hash(), env.tcount)
 		if _, err := w.commitTransaction(env, tx); err != nil {
-			log.Info("2 Skip an invalid proposed transaction", "hash", tx.Hash(), "reason", err)
+			log.Info("Skip an invalid proposed transaction", "hash", tx.Hash(), "reason", err)
 			continue
 		}
 		env.tcount++

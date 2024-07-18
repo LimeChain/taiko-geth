@@ -30,7 +30,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth"
-	ec "github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/internal/version"
 	"github.com/ethereum/go-ethereum/log"
@@ -324,47 +323,28 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 	// CHANGE(taiko): check whether --taiko flag is set.
 	isTaiko := api.eth.BlockChain().Config().Taiko
 
-	if payloadAttributes != nil && payloadAttributes.VirtualBlock {
-		l1Origin, err := ec.NewTaikoAPIBackend(api.eth).HeadL1Origin()
-		if err != nil {
-			log.Info("Failed to get head l1 origin")
-		}
-		payloadAttributes.L1Origin.L1BlockHeight = l1Origin.L1BlockHeight
-		payloadAttributes.L1Origin.L1BlockHash = l1Origin.L1BlockHash
-	}
-
-	setCanonical := true
-	if payloadAttributes != nil {
-		setCanonical = !payloadAttributes.VirtualBlock
-		log.Info("Is virtual block", "flag", payloadAttributes.VirtualBlock)
-	}
-
 	canonicalhash := rawdb.ReadCanonicalHash(api.eth.ChainDb(), block.NumberU64())
 	if canonicalhash != update.HeadBlockHash {
 		log.Info("Not canonical", "canonical hash", canonicalhash, "head block hash", update.HeadBlockHash)
 		// Block is not canonical, set head.
-		if setCanonical {
-			latestValid, err := api.eth.BlockChain().SetCanonical(block)
-			if err != nil {
-				return engine.ForkChoiceResponse{PayloadStatus: engine.PayloadStatusV1{Status: engine.INVALID, LatestValidHash: &latestValid}}, err
-			}
-			log.Info("Set new canonical",
-				"canonical hash", rawdb.ReadCanonicalHash(api.eth.ChainDb(), block.NumberU64()),
-				"head block hash", update.HeadBlockHash,
-				"latest valid hash", latestValid,
-			)
+
+		latestValid, err := api.eth.BlockChain().SetCanonical(block)
+		if err != nil {
+			return engine.ForkChoiceResponse{PayloadStatus: engine.PayloadStatusV1{Status: engine.INVALID, LatestValidHash: &latestValid}}, err
 		}
+		log.Info("Set new canonical",
+			"canonical hash", rawdb.ReadCanonicalHash(api.eth.ChainDb(), block.NumberU64()),
+			"head block hash", update.HeadBlockHash,
+			"latest valid hash", latestValid,
+		)
 	} else if api.eth.BlockChain().CurrentBlock().Hash() == update.HeadBlockHash {
 		// If the specified head matches with our local head, do nothing and keep
 		// generating the payload. It's a special corner case that a few slots are
 		// missing and we are requested to generate the payload in slot.
 	} else if isTaiko { // CHANGE(taiko): reorg is allowed in L2.
-		log.Info("It is Taiko config")
-		if setCanonical {
-			if latestValid, err := api.eth.BlockChain().SetCanonical(block); err != nil {
-				log.Info("Fork choice invalid status")
-				return engine.ForkChoiceResponse{PayloadStatus: engine.PayloadStatusV1{Status: engine.INVALID, LatestValidHash: &latestValid}}, err
-			}
+		if latestValid, err := api.eth.BlockChain().SetCanonical(block); err != nil {
+			log.Info("Fork choice invalid status")
+			return engine.ForkChoiceResponse{PayloadStatus: engine.PayloadStatusV1{Status: engine.INVALID, LatestValidHash: &latestValid}}, err
 		}
 	} else {
 		// If the head block is already in our canonical chain, the beacon client is
@@ -412,7 +392,6 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 	if payloadAttributes != nil {
 		// CHANGE(taiko): create a L2 block by Taiko protocol.
 		if isTaiko {
-			log.Info("Taiko block seal")
 			// No need to check payloadAttribute here, because all its fields are
 			// marked as required.
 			block, err := api.eth.Miner().SealBlockWith(
@@ -421,7 +400,6 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 				payloadAttributes.BlockMetadata,
 				payloadAttributes.BaseFeePerGas,
 				payloadAttributes.Withdrawals,
-				payloadAttributes.VirtualBlock,
 			)
 			if err != nil {
 				log.Error("Failed to create sealing block", "err", err)
