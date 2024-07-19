@@ -1,6 +1,6 @@
 package types
 
-// Respresents a snapshot of the tx pool state, used for
+// TxPoolSnapshot represents a snapshot of the tx pool state, used for
 // building pre-built tx lists.
 
 type TxPoolSnapshot struct {
@@ -12,7 +12,6 @@ type TxPoolSnapshot struct {
 	// New txs that are ready to be proposed, kept until actually executed
 	NewTxs Transactions
 
-	// TODO(limechain): take into account the anchor tx gas usage and bytes
 	EstimatedGasUsed uint64
 	BytesLength      uint64
 }

@@ -34,26 +34,13 @@ func WritePreconfReceipt(db ethdb.Database, receipt *types.Receipt, from *common
 	data := bytes.NewBuffer(nil)
 
 	preconfReceipt := &types.PreconfReceipt{
-		Type:              receipt.Type,
-		PostState:         receipt.PostState,
-		Status:            receipt.Status,
-		CumulativeGasUsed: receipt.CumulativeGasUsed,
-		Bloom:             receipt.Bloom,
-		Logs:              receipt.Logs,
-		TxHash:            receipt.TxHash,
-		ContractAddress:   receipt.ContractAddress,
-		GasUsed:           receipt.GasUsed,
-		EffectiveGasPrice: receipt.EffectiveGasPrice,
-		BlobGasUsed:       receipt.BlobGasUsed,
-		BlobGasPrice:      receipt.BlobGasPrice,
-		BlockHash:         receipt.BlockHash,
-		BlockNumber:       receipt.BlockNumber,
-		// There is anchor tx expected at the beginning of each block,
-		// so the tx index is offset by 1.
-		TransactionIndex: receipt.TransactionIndex + anchorTxIndexOffset,
-		From:             *from,
-		To:               *to,
+		Receipt: *receipt,
+		From:    *from,
+		To:      *to,
 	}
+	// There is anchor tx expected at the beginning of each block,
+	// so the tx index is offset by 1.
+	preconfReceipt.Receipt.TransactionIndex += anchorTxIndexOffset
 
 	err := rlp.Encode(data, preconfReceipt)
 	if err != nil {

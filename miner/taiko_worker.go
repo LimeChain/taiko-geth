@@ -22,7 +22,7 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// BuildTransactionsLists builds multiple transactions lists which satisfy all the given conditions
+// BuildTransactionList builds multiple transactions lists which satisfy all the given conditions
 // 1. All transactions should all be able to pay the given base fee.
 // 2. The total gas used should not exceed the given blockMaxGasLimit
 // 3. The total bytes used should not exceed the given maxBytesPerTxList

@@ -97,7 +97,7 @@ var (
 	snapSyncStatusFlagKey = []byte("SnapSyncStatus")
 
 	// Inclusion preconfirmations
-	txPoolSnapshotPrefixKey   = []byte("txps")
+	txPoolSnapshotPrefixKey   = []byte("TxPoolSnapshot")
 	preconfTxReceiptPrefixKey = []byte("ptxr")
 
 	// Data item prefixes (use single byte to avoid mixing data types, avoid `i`, used for indexes).
