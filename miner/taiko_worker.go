@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -36,7 +35,7 @@ func (w *worker) BuildTransactionList(
 	localAccounts []string,
 	maxTransactionsLists uint64,
 ) error {
-	log.Warn("Start building tx list", "baseFee", baseFee, "blockMaxGasLimit", blockMaxGasLimit, "maxBytesPerTxList", maxBytesPerTxList, "localAccounts", localAccounts, "maxTransactionsLists", maxTransactionsLists)
+	log.Info("Start building tx list", "baseFee", baseFee, "blockMaxGasLimit", blockMaxGasLimit, "maxBytesPerTxList", maxBytesPerTxList, "localAccounts", localAccounts, "maxTransactionsLists", maxTransactionsLists)
 
 	currentHead := w.chain.CurrentBlock()
 	if currentHead == nil {
@@ -45,8 +44,8 @@ func (w *worker) BuildTransactionList(
 
 	// Check if tx pool is empty at first.
 	if len(w.eth.TxPool().Pending(txpool.PendingFilter{BaseFee: uint256.MustFromBig(baseFee), OnlyPlainTxs: true})) == 0 {
-		// TODO: check if there is a better place to reset
-		w.ResetTxListState()
+		// Tx pool has been reset, reset the tx pool snapshot.
+		w.ResetTxPoolSnapshot()
 		return nil
 	}
 
@@ -73,7 +72,7 @@ func (w *worker) BuildTransactionList(
 		localTxs, remoteTxs = w.getPendingTxs(localAccounts, baseFee)
 	)
 
-	commitTxs := func() (*types.TxListState, error) {
+	commitTxs := func() (*types.TxPoolSnapshot, error) {
 		env.tcount = 0
 		env.txs = []*types.Transaction{}
 		env.gasPool = new(core.GasPool).AddGas(blockMaxGasLimit)
@@ -103,8 +102,9 @@ func (w *worker) BuildTransactionList(
 			return nil, err
 		}
 
-		txListState := w.UpdatePendingOfTxListState(env.txs, b, env)
-		return txListState, nil
+		// Keep the tx pool snapshot up to date.
+		txPoolSnapshot := w.UpdatePendingTxsInPoolSnapshot(env.txs, b, env)
+		return txPoolSnapshot, nil
 	}
 
 	for i := 0; i < int(maxTransactionsLists); i++ {
@@ -118,27 +118,14 @@ func (w *worker) BuildTransactionList(
 		}
 	}
 
-	// Store each receipt under the tx hash to provide preconfirmations
-	db := w.eth.BlockChain().DB()
-
-	for _, receipt := range env.receipts {
-		tx := env.txs[receipt.TransactionIndex]
-
-		if tx.Type() == types.InclusionPreconfirmationTxType {
-			signer := types.MakeSigner(w.chainConfig, receipt.BlockNumber, env.header.Time)
-			from, _ := types.Sender(signer, tx)
-			to := tx.To()
-			rawdb.WritePreconfReceipt(db, receipt, &from, to)
-			log.Info("Store inclusion preconfirmation tx receipt", "index", receipt.TransactionIndex, "hash", tx.Hash().String(), "from", from.String(), "to", to.String())
-		}
-	}
-
-	txListState := rawdb.ReadTxListState(db)
-	if txListState != nil {
-		log.Warn("Tx list pending", "count", len(txListState.PendingTxs), "txs", txListState.PendingTxs)
-		log.Warn("Tx list proposed", "count", len(txListState.ProposedTxs), "txs", txListState.ProposedTxs)
-		log.Warn("Tx list new", "count", len(txListState.NewTxs), "txs", txListState.NewTxs)
-	}
+	// TODO(limechain): remove, just for debugging purposes
+	// db := w.eth.BlockChain().DB()
+	// txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
+	// if txPoolSnapshot != nil {
+	// 	log.Warn("Tx list pending", "count", len(txPoolSnapshot.PendingTxs), "txs", txPoolSnapshot.PendingTxs)
+	// 	log.Warn("Tx list proposed", "count", len(txPoolSnapshot.ProposedTxs), "txs", txPoolSnapshot.ProposedTxs)
+	// 	log.Warn("Tx list new", "count", len(txPoolSnapshot.NewTxs), "txs", txPoolSnapshot.NewTxs)
+	// }
 	return nil
 }
 

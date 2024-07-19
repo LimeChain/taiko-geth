@@ -3,13 +3,12 @@ package eth
 import (
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/core/types"
-
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/miner"
 )
 
 // TaikoAPIBackend handles L2 node related RPC calls.
@@ -76,7 +75,7 @@ func NewTaikoAuthAPIBackend(eth *Ethereum) *TaikoAuthAPIBackend {
 	return &TaikoAuthAPIBackend{eth}
 }
 
-// BuildTxList builds a transaction list.
+// BuildTxList initiates the process of building tx lists.
 func (a *TaikoAuthAPIBackend) BuildTxList(
 	beneficiary common.Address,
 	baseFee *big.Int,
@@ -96,7 +95,7 @@ func (a *TaikoAuthAPIBackend) BuildTxList(
 	return err
 }
 
-// FetchTxList retrieves already prebuild list of transactions with the given upper limits.
+// FetchTxList retrieves already pre-built list of txs.
 func (a *TaikoAuthAPIBackend) FetchTxList(
 	beneficiary common.Address,
 	baseFee *big.Int,
@@ -104,7 +103,7 @@ func (a *TaikoAuthAPIBackend) FetchTxList(
 	maxBytesPerTxList uint64,
 	locals []string,
 	maxTransactionsLists uint64,
-) ([]*types.PreBuiltTxList, error) {
+) ([]*miner.PreBuiltTxList, error) {
 	log.Info(
 		"Fetching L2 transactions to propose",
 		"baseFee", baseFee,

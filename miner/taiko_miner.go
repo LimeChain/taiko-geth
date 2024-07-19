@@ -8,6 +8,14 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
+// PreBuiltTxList is a pre-built transaction list based on the latest chain state,
+// with estimated gas used / bytes.
+type PreBuiltTxList struct {
+	TxList           types.Transactions
+	EstimatedGasUsed uint64
+	BytesLength      uint64
+}
+
 // SealBlockWith mines and seals a block without changing the canonical chain.
 func (miner *Miner) SealBlockWith(
 	parent common.Hash,
@@ -19,7 +27,7 @@ func (miner *Miner) SealBlockWith(
 	return miner.worker.sealBlockWith(parent, timestamp, blkMeta, baseFeePerGas, withdrawals)
 }
 
-// BuildTransactionsLists builds multiple transactions lists which satisfy all the given limits.
+// BuildTransactionsLists initiates the process of building tx lists that later can be fetched.
 func (miner *Miner) BuildTransactionList(
 	beneficiary common.Address,
 	baseFee *big.Int,
@@ -39,6 +47,7 @@ func (miner *Miner) BuildTransactionList(
 	return err
 }
 
+// FetchTransactionList retrieves already pre-built list of txs.
 func (miner *Miner) FetchTransactionList(
 	beneficiary common.Address,
 	baseFee *big.Int,
@@ -46,15 +55,16 @@ func (miner *Miner) FetchTransactionList(
 	maxBytesPerTxList uint64,
 	locals []string,
 	maxTransactionsLists uint64,
-) ([]*types.PreBuiltTxList, error) {
-	// TODO: handle multiple tx lists
-	txListState := miner.worker.ProposeFromTxListState()
+) ([]*PreBuiltTxList, error) {
+	txPoolSnapshot := miner.worker.ProposeTxsInPoolSnapshot()
 
-	txList := &types.PreBuiltTxList{
-		TxList:           txListState.NewTxs,
-		EstimatedGasUsed: txListState.EstimatedGasUsed,
-		BytesLength:      txListState.BytesLength,
+	// TODO(limechain): handle multiple tx lists
+
+	txList := &PreBuiltTxList{
+		TxList:           txPoolSnapshot.NewTxs,
+		EstimatedGasUsed: txPoolSnapshot.EstimatedGasUsed,
+		BytesLength:      txPoolSnapshot.BytesLength,
 	}
 
-	return []*types.PreBuiltTxList{txList}, nil
+	return []*PreBuiltTxList{txList}, nil
 }

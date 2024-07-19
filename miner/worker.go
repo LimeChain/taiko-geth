@@ -242,91 +242,96 @@ type worker struct {
 	fullTaskHook func()                             // Method to call before pushing the full sealing task.
 	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
 
-	// Tx list state
-	txListStateMutex sync.RWMutex
-	pendingTxCache   map[common.Hash]bool
-	proposedTxCache  map[common.Hash]bool
+	// Tx pool snapshot
+	txPoolSnapshotMutex sync.RWMutex
+	pendingTxCache      map[common.Hash]bool
+	proposedTxCache     map[common.Hash]bool
 }
 
-func (w *worker) loadPendingTxInCache(txListState *types.TxListState) {
-	if w.pendingTxCache != nil {
-		return
-	}
-
-	if txListState == nil || w.pendingTxCache == nil {
+func (w *worker) loadPendingInCache(txPoolSnapshot *types.TxPoolSnapshot) {
+	if txPoolSnapshot == nil || (txPoolSnapshot == &types.TxPoolSnapshot{}) || w.pendingTxCache == nil {
+		log.Warn("Initialize pending tx cache")
 		w.pendingTxCache = make(map[common.Hash]bool)
 		return
 	}
 
-	for _, tx := range txListState.PendingTxs {
+	log.Warn("Pending tx cache", "txs", len(w.pendingTxCache))
+
+	for _, tx := range txPoolSnapshot.PendingTxs {
+		log.Warn("Loading pending tx in cache")
 		w.pendingTxCache[tx.Hash()] = true
 	}
 }
 
-func (w *worker) loadProposedTxInCache(txListState *types.TxListState) {
-	if w.proposedTxCache != nil {
-		return
-	}
-
-	if txListState == nil || w.proposedTxCache == nil {
+func (w *worker) loadProposedInCache(txPoolSnapshot *types.TxPoolSnapshot) {
+	if txPoolSnapshot == nil || (txPoolSnapshot == &types.TxPoolSnapshot{}) || w.proposedTxCache == nil {
+		log.Warn("Initialize proposed tx cache")
 		w.proposedTxCache = make(map[common.Hash]bool)
 		return
 	}
 
-	for _, tx := range txListState.ProposedTxs {
+	log.Warn("Proposed tx cache", "txs", len(w.proposedTxCache))
+
+	for _, tx := range txPoolSnapshot.ProposedTxs {
+		log.Warn("Loading proposed tx in cache")
 		w.proposedTxCache[tx.Hash()] = true
 	}
 }
 
-func (w *worker) UpdatePendingOfTxListState(txs []*types.Transaction, b []byte, env *environment) *types.TxListState {
-	w.txListStateMutex.Lock()
-	defer w.txListStateMutex.Unlock()
+func (w *worker) UpdatePendingTxsInPoolSnapshot(txs []*types.Transaction, b []byte, env *environment) *types.TxPoolSnapshot {
+	w.txPoolSnapshotMutex.Lock()
+	defer w.txPoolSnapshotMutex.Unlock()
 
 	db := w.eth.BlockChain().DB()
-	txListState := rawdb.ReadTxListState(db)
-	if txListState == nil {
-		log.Error("Empty tx list state, initialize it")
-		txListState = &types.TxListState{}
+
+	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
+	if txPoolSnapshot == nil {
+		log.Error("Empty tx pool snapshot, initialize it")
+		// Initialize the tx pool snapshot
+		txPoolSnapshot = &types.TxPoolSnapshot{}
 	}
 
-	w.loadPendingTxInCache(txListState)
-
+	// Short lived cache to speed up the lookup
+	w.loadPendingInCache(txPoolSnapshot)
 	for _, tx := range txs {
 		if !w.pendingTxCache[tx.Hash()] {
-			txListState.PendingTxs = append(txListState.PendingTxs, tx)
+			txPoolSnapshot.PendingTxs = append(txPoolSnapshot.PendingTxs, tx)
 			w.pendingTxCache[tx.Hash()] = true
-			log.Warn("Add pending tx to the list")
+			log.Warn("Add pending tx to the snapshot")
 		} else {
-			log.Warn("Skip pending tx, already in list")
+			log.Warn("Skip pending tx, already in snapshot")
 		}
 	}
 
-	// TODO: need to handle multiple tx lists
-	txListState.EstimatedGasUsed = env.header.GasLimit - env.gasPool.Gas()
-	txListState.BytesLength = uint64(len(b))
+	// TODO(limechain): handle multiple tx lists
+	txPoolSnapshot.EstimatedGasUsed = env.header.GasLimit - env.gasPool.Gas()
+	txPoolSnapshot.BytesLength = uint64(len(b))
 
-	rawdb.WriteTxListState(db, txListState)
+	rawdb.WriteTxPoolSnapshot(db, txPoolSnapshot)
 
-	return txListState
+	return txPoolSnapshot
 }
 
-func (w *worker) ProposeFromTxListState() *types.TxListState {
-	w.txListStateMutex.Lock()
-	defer w.txListStateMutex.Unlock()
+func (w *worker) ProposeTxsInPoolSnapshot() *types.TxPoolSnapshot {
+	w.txPoolSnapshotMutex.Lock()
+	defer w.txPoolSnapshotMutex.Unlock()
 
 	db := w.eth.BlockChain().DB()
-	txListState := rawdb.ReadTxListState(db)
-	w.loadProposedTxInCache(txListState)
+
+	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
+
+	// Short lived cache to speed up the lookup
+	w.loadProposedInCache(txPoolSnapshot)
 
 	// Do not reset the 'NewTxs' field to handle the case of 'driver' failures.
 	// Each 'propose' call will accumulate until the 'driver' finally executes
 	// and resets the state.
-	// txListState.NewTxs = []*types.Transaction{}
+	// txPoolSnapshot.NewTxs = []*types.Transaction{}
 
-	for _, tx := range txListState.PendingTxs {
+	for _, tx := range txPoolSnapshot.PendingTxs {
 		if !w.proposedTxCache[tx.Hash()] {
-			txListState.NewTxs = append(txListState.NewTxs, tx)
-			txListState.ProposedTxs = append(txListState.ProposedTxs, tx)
+			txPoolSnapshot.NewTxs = append(txPoolSnapshot.NewTxs, tx)
+			txPoolSnapshot.ProposedTxs = append(txPoolSnapshot.ProposedTxs, tx)
 			w.proposedTxCache[tx.Hash()] = true
 			log.Info("Add pending tx to be proposed")
 		} else {
@@ -334,43 +339,47 @@ func (w *worker) ProposeFromTxListState() *types.TxListState {
 		}
 	}
 
-	rawdb.WriteTxListState(db, txListState)
+	rawdb.WriteTxPoolSnapshot(db, txPoolSnapshot)
 
-	return txListState
+	return txPoolSnapshot
 }
 
-func (w *worker) ResetTxListState() {
-	w.txListStateMutex.Lock()
-	defer w.txListStateMutex.Unlock()
+func (w *worker) ResetTxPoolSnapshot() {
+	w.txPoolSnapshotMutex.Lock()
+	defer w.txPoolSnapshotMutex.Unlock()
 
 	db := w.eth.BlockChain().DB()
-	txListState := rawdb.ReadTxListState(db)
-	if txListState == nil {
-		// initialize tx list state
-		rawdb.WriteTxListState(db, &types.TxListState{})
+
+	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
+	if txPoolSnapshot == nil {
+		rawdb.WriteTxPoolSnapshot(db, &types.TxPoolSnapshot{})
 		return
 	}
 
-	// TODO: load both in one go
-	w.loadPendingTxInCache(txListState)
-	w.loadProposedTxInCache(txListState)
-
 	newPendingTxs := []*types.Transaction{}
 
-	for _, tx := range txListState.PendingTxs {
+	// Short lived cache to speed up the lookup
+	w.loadProposedInCache(txPoolSnapshot)
+	for _, tx := range txPoolSnapshot.PendingTxs {
 		if !w.proposedTxCache[tx.Hash()] {
 			newPendingTxs = append(newPendingTxs, tx)
 		}
 	}
 
+	// TODO(limechain):
+	// Handle the case where the 'driver' has failed and the 'proposer'
+	// has continued working, new pending transactions were added after
+	// that some txs have been proposed, and the 'driver' has been restarted.
 	if len(newPendingTxs) > 0 {
-		log.Error("There are new pending txs not in proposed list", "txs", newPendingTxs)
+		log.Error("There are new pending txs not in proposed", "txs", newPendingTxs)
 	}
-	rawdb.WriteTxListState(db, &types.TxListState{})
 
-	// TODO: leave only the txs that are not in the proposed list
+	// reset the snapshot and the caches
+	rawdb.WriteTxPoolSnapshot(db, &types.TxPoolSnapshot{})
+	w.pendingTxCache = make(map[common.Hash]bool)
+	w.proposedTxCache = make(map[common.Hash]bool)
 
-	log.Warn("Tx list state has been reset")
+	log.Warn("Tx pool snapshot has been reset")
 }
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
@@ -894,6 +903,18 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 	}
 	env.txs = append(env.txs, tx)
 	env.receipts = append(env.receipts, receipt)
+
+	// Store preconf receipt under the tx hash for later retrieval
+	// without having canonical block data available.
+	db := w.eth.BlockChain().DB()
+	if tx.Type() == types.InclusionPreconfirmationTxType {
+		signer := types.MakeSigner(w.chainConfig, receipt.BlockNumber, env.header.Time)
+		from, _ := types.Sender(signer, tx)
+		to := tx.To()
+		rawdb.WritePreconfReceipt(db, receipt, &from, to)
+		log.Info("Store inclusion preconfirmation tx receipt", "index", receipt.TransactionIndex, "hash", tx.Hash().String(), "from", from.String(), "to", to.String())
+	}
+
 	return receipt.Logs, nil
 }
 
@@ -1075,7 +1096,6 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 
-	log.Error("Prepare work ...")
 	// Find the parent block for sealing task
 	parent := w.chain.CurrentBlock()
 	if genParams.parentHash != (common.Hash{}) {
@@ -1223,7 +1243,6 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) err
 
 // generateWork generates a sealing block based on the given parameters.
 func (w *worker) generateWork(params *generateParams) *newPayloadResult {
-	log.Info("Generating work ...")
 	work, err := w.prepareWork(params)
 	if err != nil {
 		return &newPayloadResult{err: err}

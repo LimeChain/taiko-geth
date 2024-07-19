@@ -1675,6 +1675,7 @@ func (s *TransactionAPI) GetTransactionReceipt(ctx context.Context, hash common.
 	found, tx, blockHash, blockNumber, index, err := s.b.GetTransaction(ctx, hash)
 
 	if tx == nil {
+		// Check for preconfirmation tx receipt
 		preconfReceipt := rawdb.ReadPreconfReceipt(s.b.ChainDb(), hash)
 		if preconfReceipt != nil {
 			log.Info("Preconf tx receipt")
@@ -1708,6 +1709,7 @@ func (s *TransactionAPI) GetTransactionReceipt(ctx context.Context, hash common.
 	return marshalReceipt(receipt, blockHash, blockNumber, signer, tx, int(index)), nil
 }
 
+// marshalPreconfReceipt marshals a preconfirmation tx receipt into a JSON object.
 func (s *TransactionAPI) marshalPreconfReceipt(receipt *types.PreconfReceipt) map[string]interface{} {
 	fields := map[string]interface{}{
 		"blockHash":         receipt.BlockHash.String(),

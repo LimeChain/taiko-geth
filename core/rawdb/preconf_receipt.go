@@ -10,7 +10,10 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-// PreconfReceipts are stored under tx hash
+const anchorTxIndexOffset = 1
+
+// Preconf receipts are stored under the tx hash to
+// allow for retrieval without canonical block data.
 
 func ReadPreconfReceipt(db ethdb.Database, txHash common.Hash) *types.PreconfReceipt {
 	data, _ := db.Get(preconfTxReceiptKey(txHash.Bytes()))
@@ -45,9 +48,9 @@ func WritePreconfReceipt(db ethdb.Database, receipt *types.Receipt, from *common
 		BlobGasPrice:      receipt.BlobGasPrice,
 		BlockHash:         receipt.BlockHash,
 		BlockNumber:       receipt.BlockNumber,
-		// tx index is incremented by 1 since the canonical block will
-		// contain an additional anchor tx at the beginning of the block
-		TransactionIndex: receipt.TransactionIndex + 1,
+		// There is anchor tx expected at the beginning of each block,
+		// so the tx index is offset by 1.
+		TransactionIndex: receipt.TransactionIndex + anchorTxIndexOffset,
 		From:             *from,
 		To:               *to,
 	}

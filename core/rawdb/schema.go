@@ -96,8 +96,8 @@ var (
 	// snapSyncStatusFlagKey flags that status of snap sync.
 	snapSyncStatusFlagKey = []byte("SnapSyncStatus")
 
-	// InclusionPreconfirmation virtual blocks
-	txListStatePrefixKey      = []byte("txls")
+	// Inclusion preconfirmations
+	txPoolSnapshotPrefixKey   = []byte("txps")
 	preconfTxReceiptPrefixKey = []byte("ptxr")
 
 	// Data item prefixes (use single byte to avoid mixing data types, avoid `i`, used for indexes).
@@ -344,11 +344,8 @@ func IsStorageTrieNode(key []byte) bool {
 	return ok
 }
 
-// TODO: it is a single record, no need for an id
-func txListStateKey(id uint64) []byte {
-	enc := make([]byte, 8)
-	binary.BigEndian.PutUint64(enc, id)
-	return append(txListStatePrefixKey, enc...)
+func txPoolSnapshotKey() []byte {
+	return txPoolSnapshotPrefixKey
 }
 
 func preconfTxReceiptKey(txHash []byte) []byte {
