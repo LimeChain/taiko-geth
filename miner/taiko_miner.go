@@ -48,14 +48,7 @@ func (miner *Miner) BuildTransactionList(
 }
 
 // FetchTransactionList retrieves already pre-built list of txs.
-func (miner *Miner) FetchTransactionList(
-	beneficiary common.Address,
-	baseFee *big.Int,
-	blockMaxGasLimit uint64,
-	maxBytesPerTxList uint64,
-	locals []string,
-	maxTransactionsLists uint64,
-) ([]*PreBuiltTxList, error) {
+func (miner *Miner) FetchTransactionList() ([]*PreBuiltTxList, error) {
 	txPoolSnapshot := miner.worker.ProposeTxsInPoolSnapshot()
 
 	// TODO(limechain): handle multiple tx lists

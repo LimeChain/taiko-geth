@@ -96,28 +96,7 @@ func (a *TaikoAuthAPIBackend) BuildTxList(
 }
 
 // FetchTxList retrieves already pre-built list of txs.
-func (a *TaikoAuthAPIBackend) FetchTxList(
-	beneficiary common.Address,
-	baseFee *big.Int,
-	blockMaxGasLimit uint64,
-	maxBytesPerTxList uint64,
-	locals []string,
-	maxTransactionsLists uint64,
-) ([]*miner.PreBuiltTxList, error) {
-	log.Info(
-		"Fetching L2 transactions to propose",
-		"baseFee", baseFee,
-		"blockMaxGasLimit", blockMaxGasLimit,
-		"maxBytesPerTxList", maxBytesPerTxList,
-		"maxTransactions", maxTransactionsLists,
-		"locals", locals,
-	)
-	return a.eth.Miner().FetchTransactionList(
-		beneficiary,
-		baseFee,
-		blockMaxGasLimit,
-		maxBytesPerTxList,
-		locals,
-		maxTransactionsLists,
-	)
+func (a *TaikoAuthAPIBackend) FetchTxList() ([]*miner.PreBuiltTxList, error) {
+	log.Info("Fetching L2 transactions to propose")
+	return a.eth.Miner().FetchTransactionList()
 }
