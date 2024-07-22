@@ -2,7 +2,6 @@ package types
 
 // TxPoolSnapshot represents a snapshot of the tx pool state, used for
 // building pre-built tx lists.
-
 type TxPoolSnapshot struct {
 	// Keeps track of current pending txs
 	PendingTxs Transactions

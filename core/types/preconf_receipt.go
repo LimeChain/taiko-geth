@@ -8,9 +8,9 @@ import (
 // they also contain additional fields that are not expected to
 // be resolved later on and the storage is also different.
 
+// PreconfReceipt extends Receipt by including From and To fields.
 type PreconfReceipt struct {
 	Receipt
-	// Additional fields that can not be resolved later
 	From common.Address
 	To   common.Address
 }
