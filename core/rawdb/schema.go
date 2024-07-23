@@ -96,8 +96,9 @@ var (
 	// snapSyncStatusFlagKey flags that status of snap sync.
 	snapSyncStatusFlagKey = []byte("SnapSyncStatus")
 
-	// InclusionPreconfirmation virtual blocks
-	preconfBlockCursorKey = []byte("PreconfirmationBlockCursor")
+	// Inclusion preconfirmations
+	txPoolSnapshotPrefixKey   = []byte("TxPoolSnapshot")
+	preconfTxReceiptPrefixKey = []byte("ptxr")
 
 	// Data item prefixes (use single byte to avoid mixing data types, avoid `i`, used for indexes).
 	headerPrefix       = []byte("h") // headerPrefix + num (uint64 big endian) + hash -> header
@@ -341,4 +342,12 @@ func ResolveStorageTrieNode(key []byte) (bool, common.Hash, []byte) {
 func IsStorageTrieNode(key []byte) bool {
 	ok, _, _ := ResolveStorageTrieNode(key)
 	return ok
+}
+
+func txPoolSnapshotKey() []byte {
+	return txPoolSnapshotPrefixKey
+}
+
+func preconfTxReceiptKey(txHash []byte) []byte {
+	return append(preconfTxReceiptPrefixKey, txHash...)
 }

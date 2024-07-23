@@ -1,12 +1,7 @@
 package eth
 
 import (
-	"bytes"
-	"compress/zlib"
 	"math/big"
-
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/rlp"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -80,25 +75,16 @@ func NewTaikoAuthAPIBackend(eth *Ethereum) *TaikoAuthAPIBackend {
 	return &TaikoAuthAPIBackend{eth}
 }
 
-// TxPoolContent retrieves the transaction pool content with the given upper limits.
-func (a *TaikoAuthAPIBackend) TxPoolContent(
+// BuildTxList initiates the process of building tx lists.
+func (a *TaikoAuthAPIBackend) BuildTxList(
 	beneficiary common.Address,
 	baseFee *big.Int,
 	blockMaxGasLimit uint64,
 	maxBytesPerTxList uint64,
 	locals []string,
 	maxTransactionsLists uint64,
-) ([]*miner.PreBuiltTxList, error) {
-	log.Debug(
-		"Fetching L2 pending transactions finished",
-		"baseFee", baseFee,
-		"blockMaxGasLimit", blockMaxGasLimit,
-		"maxBytesPerTxList", maxBytesPerTxList,
-		"maxTransactions", maxTransactionsLists,
-		"locals", locals,
-	)
-
-	return a.eth.Miner().BuildTransactionsLists(
+) error {
+	err := a.eth.Miner().BuildTransactionList(
 		beneficiary,
 		baseFee,
 		blockMaxGasLimit,
@@ -106,125 +92,11 @@ func (a *TaikoAuthAPIBackend) TxPoolContent(
 		locals,
 		maxTransactionsLists,
 	)
+	return err
 }
 
-func (a *TaikoAuthAPIBackend) PreconfirmedTxs() ([]*miner.PreBuiltTxList, error) {
-	log.Debug("Fetching L2 preconfirmed txs")
-
-	pbCursor := rawdb.ReadPreconfBlockCursor(a.eth.ChainDb())
-	if pbCursor == nil {
-		return []*miner.PreBuiltTxList{}, nil
-	}
-
-	block := rawdb.ReadBlock(a.eth.ChainDb(), pbCursor.Hash, pbCursor.Number)
-	if block == nil {
-		log.Debug("Empty preconfirmation block", "blockHash", pbCursor.Hash, "blockNum", pbCursor.Number)
-		return []*miner.PreBuiltTxList{}, nil
-	}
-
-	b, err := encodeAndComporeessTxList(block.Transactions())
-	if err != nil {
-		log.Error("Failed to compress block txs", "blockHash", pbCursor.Hash, "blockNum", pbCursor.Number, "err", err)
-		return nil, err
-	}
-
-	prebuildTxList := &miner.PreBuiltTxList{
-		TxList:           block.Transactions(),
-		EstimatedGasUsed: block.GasUsed(),
-		BytesLength:      uint64(len(b)),
-	}
-
-	return []*miner.PreBuiltTxList{prebuildTxList}, nil
-}
-
-func (a *TaikoAuthAPIBackend) ProposePreconfirmedTxs() ([]*miner.PreBuiltTxList, error) {
-	log.Debug("Fetching L2 preconfirmed txs for proposing")
-
-	pbCursor := rawdb.ReadPreconfBlockCursor(a.eth.ChainDb())
-	if pbCursor == nil {
-		return []*miner.PreBuiltTxList{}, nil
-	}
-
-	block := rawdb.ReadBlock(a.eth.ChainDb(), pbCursor.Hash, pbCursor.Number)
-	if block == nil {
-		log.Debug("Empty preconfirmation block", "blockHash", pbCursor.Hash, "blockNum", pbCursor.Number)
-		return []*miner.PreBuiltTxList{}, nil
-	}
-
-	b, err := encodeAndComporeessTxList(block.Transactions())
-	if err != nil {
-		log.Error("Failed to compress block txs", "blockHash", pbCursor.Hash, "blockNum", pbCursor.Number, "err", err)
-		return nil, err
-	}
-
-	prebuildTxList := &miner.PreBuiltTxList{
-		TxList:           block.Transactions(),
-		EstimatedGasUsed: block.GasUsed(),
-		BytesLength:      uint64(len(b)),
-	}
-
-	return []*miner.PreBuiltTxList{prebuildTxList}, nil
-}
-
-// encodeAndComporeessTxList encodes and compresses the given transactions list.
-func encodeAndComporeessTxList(txs types.Transactions) ([]byte, error) {
-	b, err := rlp.EncodeToBytes(txs)
-	if err != nil {
-		return nil, err
-	}
-
-	return compress(b)
-}
-
-// compress compresses the given txList bytes using zlib.
-func compress(txListBytes []byte) ([]byte, error) {
-	var b bytes.Buffer
-	w := zlib.NewWriter(&b)
-	defer w.Close()
-
-	if _, err := w.Write(txListBytes); err != nil {
-		return nil, err
-	}
-
-	if err := w.Flush(); err != nil {
-		return nil, err
-	}
-
-	return b.Bytes(), nil
-}
-
-// TODO(limechain): remove it, return PreconfBlockCursor instead
-type HashAndNumber struct {
-	Hash   common.Hash
-	Number uint64
-}
-
-func (s *TaikoAPIBackend) GetPendingVirtualBlock() HashAndNumber {
-	pbCursor := rawdb.ReadPreconfBlockCursor(s.eth.ChainDb())
-
-	if pbCursor == nil {
-		return HashAndNumber{}
-	}
-
-	return HashAndNumber{pbCursor.Hash, pbCursor.Number}
-}
-
-func (s *TaikoAPIBackend) UpdatePendingVirtualBlock(blockHash common.Hash, blockNumber *math.HexOrDecimal256) bool {
-	pbCursor := types.PreconfBlockCursor{
-		Hash:   blockHash,
-		Number: (*big.Int)(blockNumber).Uint64(),
-	}
-
-	rawdb.WritePreconfBlockCursor(s.eth.ChainDb(), pbCursor)
-
-	err := s.eth.blockchain.SetPreconfirmedBlock()
-	if err != nil {
-		log.Error("failed to set preconfirmed pending block", "error", err)
-	}
-
-	return true
-}
-
-func (s *TaikoAPIBackend) DeletePendingVirtualBlock() {
-	rawdb.DeletePreconfBlockCursor(s.eth.ChainDb())
+// FetchTxList retrieves already pre-built list of txs.
+func (a *TaikoAuthAPIBackend) FetchTxList() ([]*miner.PreBuiltTxList, error) {
+	log.Info("Fetching L2 transactions to propose")
+	return a.eth.Miner().FetchTransactionList()
 }

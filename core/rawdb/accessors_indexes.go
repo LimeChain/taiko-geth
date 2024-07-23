@@ -179,35 +179,3 @@ func DeleteBloombits(db ethdb.Database, bit uint, from uint64, to uint64) {
 		log.Crit("Failed to delete bloom bits", "err", it.Error())
 	}
 }
-
-func ReadPreconfBlockCursor(db ethdb.Reader) *types.PreconfBlockCursor {
-	data, _ := db.Get(preconfBlockCursorKey)
-	if len(data) == 0 {
-		return nil
-	}
-
-	preconfBlockCursor := new(types.PreconfBlockCursor)
-	if err := rlp.DecodeBytes(data, preconfBlockCursor); err != nil {
-		log.Error("Invalid preconfirmation block cursor RLP", "err", err)
-		return nil
-	}
-
-	return preconfBlockCursor
-}
-
-func WritePreconfBlockCursor(db ethdb.Writer, entry types.PreconfBlockCursor) {
-	data, err := rlp.EncodeToBytes(entry)
-	if err != nil {
-		log.Crit("Failed to RLP encode preconfirmation block cursor", "err", err)
-	}
-
-	if err := db.Put(preconfBlockCursorKey, data); err != nil {
-		log.Crit("Failed to store preconfirmation block cursor", "err", err)
-	}
-}
-
-func DeletePreconfBlockCursor(db ethdb.KeyValueWriter) {
-	if err := db.Delete(preconfBlockCursorKey); err != nil {
-		log.Crit("Failed to delete preconfirmation block cursor", "err", err)
-	}
-}

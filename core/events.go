@@ -41,5 +41,3 @@ type ChainSideEvent struct {
 }
 
 type ChainHeadEvent struct{ Block *types.Block }
-
-type PreconfirmedHeadEvent struct{ Block *types.Block }

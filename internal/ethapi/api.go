@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -1672,6 +1673,17 @@ func (s *TransactionAPI) GetRawTransactionByHash(ctx context.Context, hash commo
 // GetTransactionReceipt returns the transaction receipt for the given transaction hash.
 func (s *TransactionAPI) GetTransactionReceipt(ctx context.Context, hash common.Hash) (map[string]interface{}, error) {
 	found, tx, blockHash, blockNumber, index, err := s.b.GetTransaction(ctx, hash)
+
+	if tx == nil {
+		// Check for preconfirmation tx receipt
+		preconfReceipt := rawdb.ReadPreconfReceipt(s.b.ChainDb(), hash)
+		if preconfReceipt != nil {
+			log.Info("Preconf tx receipt")
+			return s.marshalPreconfReceipt(preconfReceipt), nil
+		}
+		log.Error("Preconf tx receipt not found")
+	}
+
 	if err != nil {
 		return nil, NewTxIndexingError() // transaction is not fully indexed
 	}
@@ -1690,10 +1702,52 @@ func (s *TransactionAPI) GetTransactionReceipt(ctx context.Context, hash common.
 		return nil, nil
 	}
 	receipt := receipts[index]
+	log.Info("Get tx receipt from canonical state")
 
 	// Derive the sender.
 	signer := types.MakeSigner(s.b.ChainConfig(), header.Number, header.Time)
 	return marshalReceipt(receipt, blockHash, blockNumber, signer, tx, int(index)), nil
+}
+
+// marshalPreconfReceipt marshals a preconfirmation tx receipt into a JSON object.
+func (s *TransactionAPI) marshalPreconfReceipt(receipt *types.PreconfReceipt) map[string]interface{} {
+	fields := map[string]interface{}{
+		"blockHash":         receipt.BlockHash.String(),
+		"blockNumber":       hexutil.Uint64(receipt.BlockNumber.Uint64()),
+		"transactionHash":   receipt.TxHash.String(),
+		"transactionIndex":  hexutil.Uint64(receipt.TransactionIndex),
+		"from":              receipt.From,
+		"to":                receipt.To,
+		"gasUsed":           hexutil.Uint64(receipt.GasUsed),
+		"cumulativeGasUsed": hexutil.Uint64(receipt.CumulativeGasUsed),
+		"contractAddress":   nil,
+		"logs":              receipt.Logs,
+		"logsBloom":         receipt.Bloom,
+		"type":              hexutil.Uint(receipt.Type),
+		"effectiveGasPrice": (*hexutil.Big)(receipt.EffectiveGasPrice),
+	}
+
+	// Assign receipt status or post state.
+	if len(receipt.PostState) > 0 {
+		fields["root"] = hexutil.Bytes(receipt.PostState)
+	} else {
+		fields["status"] = hexutil.Uint(receipt.Status)
+	}
+	if receipt.Logs == nil {
+		fields["logs"] = []*types.Log{}
+	}
+
+	if receipt.Type == types.BlobTxType {
+		fields["blobGasUsed"] = hexutil.Uint64(receipt.BlobGasUsed)
+		fields["blobGasPrice"] = (*hexutil.Big)(receipt.BlobGasPrice)
+	}
+
+	// If the ContractAddress is 20 0x0 bytes, assume it is not a contract creation
+	if receipt.ContractAddress != (common.Address{}) {
+		fields["contractAddress"] = receipt.ContractAddress
+	}
+
+	return fields
 }
 
 // marshalReceipt marshals a transaction receipt into a JSON object.

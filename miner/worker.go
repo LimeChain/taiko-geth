@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -240,6 +241,145 @@ type worker struct {
 	skipSealHook func(*task) bool                   // Method to decide whether skipping the sealing.
 	fullTaskHook func()                             // Method to call before pushing the full sealing task.
 	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
+
+	// Tx pool snapshot
+	txPoolSnapshotMutex sync.RWMutex
+	pendingTxCache      map[common.Hash]bool
+	proposedTxCache     map[common.Hash]bool
+}
+
+func (w *worker) loadPendingInCache(txPoolSnapshot *types.TxPoolSnapshot) {
+	if txPoolSnapshot == nil || (txPoolSnapshot == &types.TxPoolSnapshot{}) || w.pendingTxCache == nil {
+		log.Warn("Initialize pending tx cache")
+		w.pendingTxCache = make(map[common.Hash]bool)
+		return
+	}
+
+	log.Warn("Pending tx cache", "txs", len(w.pendingTxCache))
+
+	for _, tx := range txPoolSnapshot.PendingTxs {
+		log.Warn("Loading pending tx in cache")
+		w.pendingTxCache[tx.Hash()] = true
+	}
+}
+
+func (w *worker) loadProposedInCache(txPoolSnapshot *types.TxPoolSnapshot) {
+	if txPoolSnapshot == nil || (txPoolSnapshot == &types.TxPoolSnapshot{}) || w.proposedTxCache == nil {
+		log.Warn("Initialize proposed tx cache")
+		w.proposedTxCache = make(map[common.Hash]bool)
+		return
+	}
+
+	log.Warn("Proposed tx cache", "txs", len(w.proposedTxCache))
+
+	for _, tx := range txPoolSnapshot.ProposedTxs {
+		log.Warn("Loading proposed tx in cache")
+		w.proposedTxCache[tx.Hash()] = true
+	}
+}
+
+func (w *worker) UpdatePendingTxsInPoolSnapshot(txs []*types.Transaction, b []byte, env *environment) *types.TxPoolSnapshot {
+	w.txPoolSnapshotMutex.Lock()
+	defer w.txPoolSnapshotMutex.Unlock()
+
+	db := w.eth.BlockChain().DB()
+
+	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
+	if txPoolSnapshot == nil {
+		log.Error("Empty tx pool snapshot, initialize it")
+		// Initialize the tx pool snapshot
+		txPoolSnapshot = &types.TxPoolSnapshot{}
+	}
+
+	// Short lived cache to speed up the lookup
+	w.loadPendingInCache(txPoolSnapshot)
+	for _, tx := range txs {
+		if !w.pendingTxCache[tx.Hash()] {
+			txPoolSnapshot.PendingTxs = append(txPoolSnapshot.PendingTxs, tx)
+			w.pendingTxCache[tx.Hash()] = true
+			log.Warn("Add pending tx to the snapshot")
+		} else {
+			log.Warn("Skip pending tx, already in snapshot")
+		}
+	}
+
+	// TODO(limechain): handle multiple tx lists
+	txPoolSnapshot.EstimatedGasUsed = env.header.GasLimit - env.gasPool.Gas()
+	txPoolSnapshot.BytesLength = uint64(len(b))
+
+	rawdb.WriteTxPoolSnapshot(db, txPoolSnapshot)
+
+	return txPoolSnapshot
+}
+
+func (w *worker) ProposeTxsInPoolSnapshot() *types.TxPoolSnapshot {
+	w.txPoolSnapshotMutex.Lock()
+	defer w.txPoolSnapshotMutex.Unlock()
+
+	db := w.eth.BlockChain().DB()
+
+	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
+
+	// Short lived cache to speed up the lookup
+	w.loadProposedInCache(txPoolSnapshot)
+
+	// Do not reset the 'NewTxs' field to handle the case of 'driver' failures.
+	// Each 'propose' call will accumulate until the 'driver' finally executes
+	// and resets the state.
+	// txPoolSnapshot.NewTxs = []*types.Transaction{}
+
+	for _, tx := range txPoolSnapshot.PendingTxs {
+		if !w.proposedTxCache[tx.Hash()] {
+			txPoolSnapshot.NewTxs = append(txPoolSnapshot.NewTxs, tx)
+			txPoolSnapshot.ProposedTxs = append(txPoolSnapshot.ProposedTxs, tx)
+			w.proposedTxCache[tx.Hash()] = true
+			log.Info("Add pending tx to be proposed")
+		} else {
+			log.Info("Skip pending tx, already proposed", "hash", tx.Hash())
+		}
+	}
+
+	rawdb.WriteTxPoolSnapshot(db, txPoolSnapshot)
+
+	return txPoolSnapshot
+}
+
+func (w *worker) ResetTxPoolSnapshot() {
+	w.txPoolSnapshotMutex.Lock()
+	defer w.txPoolSnapshotMutex.Unlock()
+
+	db := w.eth.BlockChain().DB()
+
+	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
+	if txPoolSnapshot == nil {
+		rawdb.WriteTxPoolSnapshot(db, &types.TxPoolSnapshot{})
+		return
+	}
+
+	newPendingTxs := []*types.Transaction{}
+
+	// Short lived cache to speed up the lookup
+	w.loadProposedInCache(txPoolSnapshot)
+	for _, tx := range txPoolSnapshot.PendingTxs {
+		if !w.proposedTxCache[tx.Hash()] {
+			newPendingTxs = append(newPendingTxs, tx)
+		}
+	}
+
+	// TODO(limechain):
+	// Handle the case where the 'driver' has failed and the 'proposer'
+	// has continued working, new pending transactions were added after
+	// that some txs have been proposed, and the 'driver' has been restarted.
+	if len(newPendingTxs) > 0 {
+		log.Error("There are new pending txs not in proposed", "txs", newPendingTxs)
+	}
+
+	// reset the snapshot and the caches
+	rawdb.WriteTxPoolSnapshot(db, &types.TxPoolSnapshot{})
+	w.pendingTxCache = make(map[common.Hash]bool)
+	w.proposedTxCache = make(map[common.Hash]bool)
+
+	log.Warn("Tx pool snapshot has been reset")
 }
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
@@ -763,6 +903,18 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 	}
 	env.txs = append(env.txs, tx)
 	env.receipts = append(env.receipts, receipt)
+
+	// Store preconf receipt under the tx hash for later retrieval
+	// without having canonical block data available.
+	db := w.eth.BlockChain().DB()
+	if tx.Type() == types.InclusionPreconfirmationTxType {
+		signer := types.MakeSigner(w.chainConfig, receipt.BlockNumber, env.header.Time)
+		from, _ := types.Sender(signer, tx)
+		to := tx.To()
+		rawdb.WritePreconfReceipt(db, receipt, &from, to)
+		log.Info("Store inclusion preconfirmation tx receipt", "index", receipt.TransactionIndex, "hash", tx.Hash().String(), "from", from.String(), "to", to.String())
+	}
+
 	return receipt.Logs, nil
 }
 

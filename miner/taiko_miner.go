@@ -23,21 +23,20 @@ func (miner *Miner) SealBlockWith(
 	blkMeta *engine.BlockMetadata,
 	baseFeePerGas *big.Int,
 	withdrawals types.Withdrawals,
-	virtualBlock bool,
 ) (*types.Block, error) {
-	return miner.worker.sealBlockWith(parent, timestamp, blkMeta, baseFeePerGas, withdrawals, virtualBlock)
+	return miner.worker.sealBlockWith(parent, timestamp, blkMeta, baseFeePerGas, withdrawals)
 }
 
-// BuildTransactionsLists builds multiple transactions lists which satisfy all the given limits.
-func (miner *Miner) BuildTransactionsLists(
+// BuildTransactionList initiates the process of building tx lists that later can be fetched.
+func (miner *Miner) BuildTransactionList(
 	beneficiary common.Address,
 	baseFee *big.Int,
 	blockMaxGasLimit uint64,
 	maxBytesPerTxList uint64,
 	locals []string,
 	maxTransactionsLists uint64,
-) ([]*PreBuiltTxList, error) {
-	return miner.worker.BuildTransactionsLists(
+) error {
+	return miner.worker.BuildTransactionList(
 		beneficiary,
 		baseFee,
 		blockMaxGasLimit,
@@ -45,4 +44,19 @@ func (miner *Miner) BuildTransactionsLists(
 		locals,
 		maxTransactionsLists,
 	)
+}
+
+// FetchTransactionList retrieves already pre-built list of txs.
+func (miner *Miner) FetchTransactionList() ([]*PreBuiltTxList, error) {
+	txPoolSnapshot := miner.worker.ProposeTxsInPoolSnapshot()
+
+	// TODO(limechain): handle multiple tx lists
+
+	txList := &PreBuiltTxList{
+		TxList:           txPoolSnapshot.NewTxs,
+		EstimatedGasUsed: txPoolSnapshot.EstimatedGasUsed,
+		BytesLength:      txPoolSnapshot.BytesLength,
+	}
+
+	return []*PreBuiltTxList{txList}, nil
 }
