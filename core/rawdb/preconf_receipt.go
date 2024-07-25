@@ -42,6 +42,8 @@ func WritePreconfReceipt(db ethdb.Database, receipt *types.Receipt, from *common
 	// so the tx index is offset by 1.
 	preconfReceipt.Receipt.TransactionIndex += anchorTxIndexOffset
 
+	log.Error("Preconf receipt block", "number", preconfReceipt.BlockNumber.Uint64())
+
 	err := rlp.Encode(data, preconfReceipt)
 	if err != nil {
 		log.Crit("Failed to RLP encode preconf tx receipt", "err", err)

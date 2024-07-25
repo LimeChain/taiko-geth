@@ -49,14 +49,11 @@ func (miner *Miner) BuildTransactionList(
 // FetchTransactionList retrieves already pre-built list of txs.
 func (miner *Miner) FetchTransactionList() ([]*PreBuiltTxList, error) {
 	txPoolSnapshot := miner.worker.ProposeTxsInPoolSnapshot()
-
-	// TODO(limechain): handle multiple tx lists
-
+	// TODO(limechain): refactor, no need to return multiple lists
 	txList := &PreBuiltTxList{
 		TxList:           txPoolSnapshot.NewTxs,
 		EstimatedGasUsed: txPoolSnapshot.EstimatedGasUsed,
 		BytesLength:      txPoolSnapshot.BytesLength,
 	}
-
 	return []*PreBuiltTxList{txList}, nil
 }
