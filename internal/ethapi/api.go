@@ -1711,9 +1711,8 @@ func (s *TransactionAPI) GetTransactionReceipt(ctx context.Context, hash common.
 // marshalPreconfReceipt marshals a preconfirmation tx receipt into a JSON object.
 func (s *TransactionAPI) marshalPreconfReceipt(receipt *types.PreconfReceipt) map[string]interface{} {
 	fields := map[string]interface{}{
-		"blockHash": receipt.BlockHash.String(),
-		// TODO(limechain) fix nil
-		// "blockNumber":       hexutil.Uint64((*receipt.BlockNumber).Uint64()),
+		"blockHash":         receipt.BlockHash.String(),
+		"blockNumber":       hexutil.Uint64(receipt.BlockNumber.Uint64()),
 		"transactionHash":   receipt.TxHash.String(),
 		"transactionIndex":  hexutil.Uint64(receipt.TransactionIndex),
 		"from":              receipt.From,
