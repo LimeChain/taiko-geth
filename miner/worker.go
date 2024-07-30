@@ -249,7 +249,7 @@ type worker struct {
 }
 
 func (w *worker) loadPendingInCache(txPoolSnapshot *types.TxPoolSnapshot) {
-	if txPoolSnapshot == nil || (txPoolSnapshot == &types.TxPoolSnapshot{}) || w.pendingTxCache == nil {
+	if txPoolSnapshot == nil || (txPoolSnapshot == types.NewTxPoolSnapshot()) || w.pendingTxCache == nil {
 		log.Warn("Initialize pending tx cache")
 		w.pendingTxCache = make(map[common.Hash]bool)
 		return
@@ -264,7 +264,7 @@ func (w *worker) loadPendingInCache(txPoolSnapshot *types.TxPoolSnapshot) {
 }
 
 func (w *worker) loadProposedInCache(txPoolSnapshot *types.TxPoolSnapshot) {
-	if txPoolSnapshot == nil || (txPoolSnapshot == &types.TxPoolSnapshot{}) || w.proposedTxCache == nil {
+	if txPoolSnapshot == nil || (txPoolSnapshot == types.NewTxPoolSnapshot()) || w.proposedTxCache == nil {
 		log.Warn("Initialize proposed tx cache")
 		w.proposedTxCache = make(map[common.Hash]bool)
 		return
@@ -288,7 +288,7 @@ func (w *worker) UpdatePendingTxsInPoolSnapshot(txs []*types.Transaction, b []by
 	if txPoolSnapshot == nil {
 		log.Error("Empty tx pool snapshot, initialize it")
 		// Initialize the tx pool snapshot
-		txPoolSnapshot = &types.TxPoolSnapshot{}
+		txPoolSnapshot = types.NewTxPoolSnapshot()
 	}
 
 	// Short lived cache to speed up the lookup
@@ -303,7 +303,7 @@ func (w *worker) UpdatePendingTxsInPoolSnapshot(txs []*types.Transaction, b []by
 		}
 	}
 
-	// TODO(limechain): handle multiple tx lists
+	// TODO(limechain): refactor, no need to return multiple lists
 	txPoolSnapshot.EstimatedGasUsed = env.header.GasLimit - env.gasPool.Gas()
 	txPoolSnapshot.BytesLength = uint64(len(b))
 
@@ -352,7 +352,7 @@ func (w *worker) ResetTxPoolSnapshot() {
 
 	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
 	if txPoolSnapshot == nil {
-		rawdb.WriteTxPoolSnapshot(db, &types.TxPoolSnapshot{})
+		rawdb.WriteTxPoolSnapshot(db, types.NewTxPoolSnapshot())
 		return
 	}
 
@@ -375,7 +375,7 @@ func (w *worker) ResetTxPoolSnapshot() {
 	}
 
 	// reset the snapshot and the caches
-	rawdb.WriteTxPoolSnapshot(db, &types.TxPoolSnapshot{})
+	rawdb.WriteTxPoolSnapshot(db, types.NewTxPoolSnapshot())
 	w.pendingTxCache = make(map[common.Hash]bool)
 	w.proposedTxCache = make(map[common.Hash]bool)
 

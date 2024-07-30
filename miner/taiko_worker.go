@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -118,14 +119,18 @@ func (w *worker) BuildTransactionList(
 		}
 	}
 
+	// TODO(limechain): During transaction execution, if sufficient block space is
+	// available in the current slot, pull and process transactions with later deadlines
+	// in the current slot, and update the per-slot constraints.
+
 	// TODO(limechain): remove, just for debugging purposes
-	// db := w.eth.BlockChain().DB()
-	// txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
-	// if txPoolSnapshot != nil {
-	// 	log.Warn("Tx list pending", "count", len(txPoolSnapshot.PendingTxs), "txs", txPoolSnapshot.PendingTxs)
-	// 	log.Warn("Tx list proposed", "count", len(txPoolSnapshot.ProposedTxs), "txs", txPoolSnapshot.ProposedTxs)
-	// 	log.Warn("Tx list new", "count", len(txPoolSnapshot.NewTxs), "txs", txPoolSnapshot.NewTxs)
-	// }
+	db := w.eth.BlockChain().DB()
+	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
+	if txPoolSnapshot != nil {
+		log.Warn("Tx list pending", "count", len(txPoolSnapshot.PendingTxs), "txs", txPoolSnapshot.PendingTxs)
+		log.Warn("Tx list proposed", "count", len(txPoolSnapshot.ProposedTxs), "txs", txPoolSnapshot.ProposedTxs)
+		log.Warn("Tx list new", "count", len(txPoolSnapshot.NewTxs), "txs", txPoolSnapshot.NewTxs)
+	}
 	return nil
 }
 
@@ -298,6 +303,7 @@ func (w *worker) commitL2Transactions(
 		// Start executing the transaction
 		env.state.SetTxContext(tx.Hash(), env.tcount)
 
+		log.Warn("Processing tx", "from", from, "type", tx.Type(), "hash", tx.Hash(), "nonce", tx.Nonce(), "gasPrice", tx.GasPrice(), "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap(), "gas", tx.Gas())
 		_, err := w.commitTransaction(env, tx)
 		switch {
 		case errors.Is(err, core.ErrNonceTooLow):

@@ -1678,7 +1678,6 @@ func (s *TransactionAPI) GetTransactionReceipt(ctx context.Context, hash common.
 		// Check for preconfirmation tx receipt
 		preconfReceipt := rawdb.ReadPreconfReceipt(s.b.ChainDb(), hash)
 		if preconfReceipt != nil {
-			log.Info("Preconf tx receipt")
 			return s.marshalPreconfReceipt(preconfReceipt), nil
 		}
 		log.Error("Preconf tx receipt not found")
@@ -1812,6 +1811,83 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 	if err := checkTxFee(tx.GasPrice(), tx.Gas(), b.RPCTxFeeCap()); err != nil {
 		return common.Hash{}, err
 	}
+
+	// Check whether inclusion constraints are met.
+	if tx.Type() == types.InclusionPreconfirmationTxType {
+		currentEpoch, currentSlot := getCurrentL1EpochAndSlot()
+
+		txPoolSnapshot := rawdb.ReadTxPoolSnapshot(b.ChainDb())
+		// TODO(limechain): initialize and update it in a separate thread
+		if txPoolSnapshot == nil {
+			log.Error("Can't validate inclusion constraints, tx pool snapshot is unknown")
+			return common.Hash{}, nil
+		}
+		// TODO(limechain): Move this to the place where current epoch and slot are being updated.
+		txPoolSnapshot.ResetPastConstraints(currentSlot)
+
+		// The deadline is for a past slot.
+		if tx.Deadline().Uint64() < currentSlot {
+			log.Error("Inclusion rejected, deadline is in the past", "hash", tx.Hash(), "deadline", tx.Deadline(), "current slot", currentSlot)
+			return common.Hash{}, nil
+		}
+
+		blockGasLimit := uint64(30_000_000)
+
+		assignedSlots := getAssignedL1Slots()
+
+		if tx.Deadline().Uint64() == currentSlot {
+			// Deadline is for the current slot.
+			if assignedToProposeBlock(currentSlot, assignedSlots) {
+				// Check whether the block space constraints are met (gas and byte estimates from the snapshot).
+				if txPoolSnapshot.EstimatedGasUsed+tx.Gas() > blockGasLimit {
+					log.Error("Inclusion rejected, gas limit reached", "hash", tx.Hash(), "deadline", tx.Deadline(), "current slot", currentSlot)
+					return common.Hash{}, nil
+				}
+			} else {
+				log.Error("Inclusion rejected, not assigned to propose block", "hash", tx.Hash(), "deadline", tx.Deadline(), "current slot", currentSlot)
+				return common.Hash{}, nil
+			}
+		}
+
+		// Deadline is for a future slot in the next epoch, so the slot assignment is unknown.
+		firstSlotFromNextEpoch := currentEpoch*32 + 32
+		if tx.Deadline().Uint64() > firstSlotFromNextEpoch {
+			log.Error("Inclusion rejected, too far in the future", "hash", tx.Hash(), "deadline", tx.Deadline(), "current epoch", currentEpoch)
+			return common.Hash{}, nil
+		}
+
+		// Deadline is for a future slot in the current epoch, and the slot assignment is known.
+		lookup := assignedSlotsLookup(assignedSlots)
+		// Check whether txs could be included in future slots prior to the deadline, in which we are assigned to propose.
+		assignedFutureSlotsPriorDeadline := []uint64{}
+		for slot := currentSlot + 1; slot <= uint64(tx.Deadline().Uint64()); slot++ {
+			if lookup[slot] {
+				assignedFutureSlotsPriorDeadline = append(assignedFutureSlotsPriorDeadline, slot)
+			}
+		}
+		// There are no future assigned slots to include this tx.
+		if len(assignedFutureSlotsPriorDeadline) == 0 {
+			log.Error("Inclusion rejected, no assigned slots", "hash", tx.Hash(), "deadline", tx.Deadline(), "current slot", currentSlot)
+			return common.Hash{}, nil
+		}
+
+		// Initially the worst-case scenario is assumed, where the tx is included in the last possible slot just prior to the deadline.
+		latestSlot := tx.Deadline().Uint64()
+		blockConstraints, err := txPoolSnapshot.GetConstraints(latestSlot)
+		if err != nil {
+			log.Error("Can't validate inclusion constraints, slot constraints are unknown", "slot", tx.Deadline().Uint64())
+			return common.Hash{}, nil
+		}
+		if blockConstraints.EstimatedGasUsed+tx.Gas() > blockGasLimit {
+			log.Error("Inclusion rejected, gas limit reached", "hash", tx.Hash(), "deadline", tx.Deadline(), "current slot", currentSlot)
+			return common.Hash{}, nil
+		}
+		// Update the transaction's gas and byte usage per slot, depending on the latest deadline and assigned slots
+		// and later during execution, update the constraints.
+		txPoolSnapshot.UpdateConstraints(tx.Deadline().Uint64(), tx.Gas(), tx.Size())
+		rawdb.WriteTxPoolSnapshot(b.ChainDb(), txPoolSnapshot)
+	}
+
 	if !b.UnprotectedAllowed() && !tx.Protected() {
 		// Ensure only eip155 signed transactions are submitted if EIP155Required is set.
 		return common.Hash{}, errors.New("only replay-protected (EIP-155) transactions allowed over RPC")
@@ -1834,6 +1910,74 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 		log.Info("Submitted transaction", "hash", tx.Hash().Hex(), "from", from, "nonce", tx.Nonce(), "recipient", tx.To(), "value", tx.Value())
 	}
 	return tx.Hash(), nil
+}
+
+// getCurrentL1EpochAndSlot gets current epoch and slot from storage,
+// that is being updated curl -X GET http://127.0.0.1:52027/eth/v1/node/syncing
+func getCurrentL1EpochAndSlot() (uint64, uint64) {
+	// TODO(limechain): remove this mock
+	slot := uint64(52625)
+	offset := slot % 32
+	epoch := (slot - offset) / 32
+	log.Warn("Get current L1 epoch and slot", "epoch", epoch, "first slot", slot-offset, "slot", slot)
+	return epoch, slot
+}
+
+// getAssignedL1Slots gets the assigned slots from storage.
+func getAssignedL1Slots() []uint64 {
+	// TODO(limechain): remove this mock
+	firstEpochSlot := uint64(52625)
+	return []uint64{
+		firstEpochSlot + 0,
+		// firstEpochSlot + 1,
+		// firstEpochSlot + 2,
+		firstEpochSlot + 3,
+		firstEpochSlot + 4,
+		firstEpochSlot + 5,
+		firstEpochSlot + 6,
+		firstEpochSlot + 7,
+		firstEpochSlot + 8,
+		firstEpochSlot + 9,
+		firstEpochSlot + 10,
+		firstEpochSlot + 11,
+		firstEpochSlot + 12,
+		firstEpochSlot + 13,
+		firstEpochSlot + 14,
+		// firstEpochSlot + 15,
+		// firstEpochSlot + 16,
+		// firstEpochSlot + 17,
+		// firstEpochSlot + 18,
+		// firstEpochSlot + 19,
+		// firstEpochSlot + 20,
+		firstEpochSlot + 21,
+		firstEpochSlot + 22,
+		firstEpochSlot + 23,
+		firstEpochSlot + 24,
+		firstEpochSlot + 25,
+		firstEpochSlot + 26,
+		firstEpochSlot + 27,
+		firstEpochSlot + 28,
+		firstEpochSlot + 39,
+		firstEpochSlot + 30,
+		firstEpochSlot + 31,
+	}
+}
+
+func assignedToProposeBlock(slot uint64, assignedSlots []uint64) bool {
+	for _, s := range assignedSlots {
+		if s == slot {
+			return true
+		}
+	}
+	return false
+}
+
+func assignedSlotsLookup(assignedSlots []uint64) map[uint64]bool {
+	lookup := map[uint64]bool{}
+	for _, s := range assignedSlots {
+		lookup[s] = true
+	}
+	return lookup
 }
 
 // SendTransaction creates a transaction for the given argument, sign it and submit it to the

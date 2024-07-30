@@ -62,6 +62,7 @@ func (s txByPriceAndTime) Len() int { return len(s) }
 func (s txByPriceAndTime) Less(i, j int) bool {
 	// If the prices are equal, use the time the transaction was first seen for
 	// deterministic sorting
+	// Inclusion tx come with higher fees and thus have higher priority.
 	cmp := s[i].fees.Cmp(s[j].fees)
 	if cmp == 0 {
 		return s[i].tx.Time.Before(s[j].tx.Time)
