@@ -161,7 +161,8 @@ func (tx *Transaction) MarshalJSON() ([]byte, error) {
 		enc.Deadline = (*hexutil.Big)(itx.Deadline)
 		enc.To = tx.To()
 		enc.Gas = (*hexutil.Uint64)(&itx.Gas)
-		enc.GasPrice = (*hexutil.Big)(itx.GasPrice)
+		enc.MaxFeePerGas = (*hexutil.Big)(itx.GasFeeCap)
+		enc.MaxPriorityFeePerGas = (*hexutil.Big)(itx.GasTipCap)
 		enc.Value = (*hexutil.Big)(itx.Value)
 		enc.Input = (*hexutil.Bytes)(&itx.Data)
 		enc.AccessList = &itx.AccessList
@@ -449,10 +450,18 @@ func (tx *Transaction) UnmarshalJSON(input []byte) error {
 			return errors.New("missing required field 'gas' in transaction")
 		}
 		itx.Gas = uint64(*dec.Gas)
-		if dec.GasPrice == nil {
-			return errors.New("missing required field 'gasPrice' in transaction")
+		if dec.MaxPriorityFeePerGas == nil {
+			return errors.New("missing required field 'maxPriorityFeePerGas' in transaction")
 		}
-		itx.GasPrice = (*big.Int)(dec.GasPrice)
+		itx.GasTipCap = (*big.Int)(dec.MaxPriorityFeePerGas)
+		if dec.MaxFeePerGas == nil {
+			return errors.New("missing required field 'maxFeePerGas' in transaction")
+		}
+		itx.GasFeeCap = (*big.Int)(dec.MaxFeePerGas)
+		if dec.Value == nil {
+			return errors.New("missing required field 'value' in transaction")
+		}
+
 		if dec.Value == nil {
 			return errors.New("missing required field 'value' in transaction")
 		}

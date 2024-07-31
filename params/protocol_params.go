@@ -176,7 +176,7 @@ const (
 
 	BlobTxHashVersion = 0x01 // CHANGE(taiko): Version byte of the commitment hash
 
-	InclusionPreconfirmationFeePremium uint64 = 3
+	InclusionPreconfirmationFeePremium uint64 = 90
 )
 
 // Gas discount table for BLS12-381 G1 and G2 multi exponentiation operations

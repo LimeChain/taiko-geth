@@ -18,21 +18,20 @@ package types
 
 import (
 	"bytes"
-	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/holiman/uint256"
 )
 
 // InclusionPreconfirmationTx is the data of EIP-2930 access list transactions.
 type InclusionPreconfirmationTx struct {
-	ChainID    *big.Int        // destination chain ID
-	Nonce      uint64          // nonce of sender account
-	GasPrice   *big.Int        // wei per gas
-	Gas        uint64          // gas limit
+	ChainID    *big.Int // destination chain ID
+	Nonce      uint64   // nonce of sender account
+	GasTipCap  *big.Int // a.k.a. maxPriorityFeePerGas
+	GasFeeCap  *big.Int // a.k.a. maxFeePerGas
+	Gas        uint64
 	To         *common.Address `rlp:"nil"` // nil means contract creation
 	Value      *big.Int        // wei amount
 	Data       []byte          // contract invocation input data
@@ -53,10 +52,12 @@ func (tx *InclusionPreconfirmationTx) copy() TxData {
 		AccessList: make(AccessList, len(tx.AccessList)),
 		Value:      new(big.Int),
 		ChainID:    new(big.Int),
-		GasPrice:   new(big.Int),
-		V:          new(big.Int),
-		R:          new(big.Int),
-		S:          new(big.Int),
+		GasTipCap:  new(big.Int),
+		GasFeeCap:  new(big.Int),
+
+		V: new(big.Int),
+		R: new(big.Int),
+		S: new(big.Int),
 	}
 	copy(cpy.AccessList, tx.AccessList)
 	if tx.Value != nil {
@@ -65,8 +66,11 @@ func (tx *InclusionPreconfirmationTx) copy() TxData {
 	if tx.ChainID != nil {
 		cpy.ChainID.Set(tx.ChainID)
 	}
-	if tx.GasPrice != nil {
-		cpy.GasPrice.Set(tx.GasPrice)
+	if tx.GasTipCap != nil {
+		cpy.GasTipCap.Set(tx.GasTipCap)
+	}
+	if tx.GasFeeCap != nil {
+		cpy.GasFeeCap.Set(tx.GasFeeCap)
 	}
 	if tx.V != nil {
 		cpy.V.Set(tx.V)
@@ -89,21 +93,26 @@ func (tx *InclusionPreconfirmationTx) chainID() *big.Int      { return tx.ChainI
 func (tx *InclusionPreconfirmationTx) accessList() AccessList { return tx.AccessList }
 func (tx *InclusionPreconfirmationTx) data() []byte           { return tx.Data }
 func (tx *InclusionPreconfirmationTx) gas() uint64            { return tx.Gas }
-func (tx *InclusionPreconfirmationTx) gasPrice() *big.Int     { return tx.GasPrice }
-func (tx *InclusionPreconfirmationTx) gasTipCap() *big.Int    { return tx.GasPrice }
-func (tx *InclusionPreconfirmationTx) gasFeeCap() *big.Int    { return tx.GasPrice }
+func (tx *InclusionPreconfirmationTx) gasPrice() *big.Int     { return tx.GasFeeCap }
+func (tx *InclusionPreconfirmationTx) gasTipCap() *big.Int    { return tx.GasTipCap }
+func (tx *InclusionPreconfirmationTx) gasFeeCap() *big.Int    { return tx.GasFeeCap }
 func (tx *InclusionPreconfirmationTx) value() *big.Int        { return tx.Value }
 func (tx *InclusionPreconfirmationTx) nonce() uint64          { return tx.Nonce }
 func (tx *InclusionPreconfirmationTx) to() *common.Address    { return tx.To }
 func (tx *InclusionPreconfirmationTx) deadline() *big.Int     { return tx.Deadline }
 
 func (tx *InclusionPreconfirmationTx) effectiveGasPrice(dst *big.Int, baseFee *big.Int) *big.Int {
-	fmt.Println("InclusionPreconfirmationTx effectiveGasPrice")
 	if baseFee == nil {
-		return dst.Set(tx.GasPrice)
+		return dst.Set(tx.GasFeeCap)
 	}
-	preconfirmationBaseFeePerGas := dst.Mul(new(uint256.Int).SetUint64(params.InclusionPreconfirmationFeePremium).ToBig(), baseFee)
-	tip := preconfirmationBaseFeePerGas.Div(preconfirmationBaseFeePerGas, new(uint256.Int).SetUint64(100).ToBig())
+	premiumFeePerGas := dst.Mul(
+		new(big.Int).SetUint64(params.InclusionPreconfirmationFeePremium),
+		baseFee,
+	)
+	tip := premiumFeePerGas.Div(premiumFeePerGas, new(big.Int).SetUint64(100))
+	if tip.Cmp(tx.GasTipCap) > 0 {
+		tip.Set(tx.GasTipCap)
+	}
 	return tip.Add(tip, baseFee)
 }
 

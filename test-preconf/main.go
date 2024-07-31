@@ -16,10 +16,8 @@ import (
 )
 
 var (
-	url = "http://127.0.0.1:28545"
-
-	chainID = big.NewInt(167001) // mainnet
-
+	url         = "http://127.0.0.1:28545"
+	chainID     = big.NewInt(167001) // mainnet
 	currentSlot = big.NewInt(52625)
 
 	accounts = []map[string]string{
@@ -35,8 +33,9 @@ var (
 		},
 	}
 
-	value    = big.NewInt(100000) //
-	gasLimit = uint64(200000)     // in units
+	value    = big.NewInt(100_000) // in wei (1 eth = 1_000_000_000_000_000_000)
+	gas      = uint64(21_000)
+	gasLimit = uint64(200000) // in units
 	data     []byte
 )
 
@@ -93,9 +92,7 @@ func main() {
 			},
 		}
 
-		// Send pre-configured number of txs
 		accountTxs := accountsTxs[account["fromAddress"]]
-
 		for i := 0; i < len(accountTxs); i++ {
 			fmt.Println()
 
@@ -103,11 +100,11 @@ func main() {
 			// if err != nil {
 			// 	log.Fatalf("Failed to get nonce: %v", err)
 			// }
+			// gasPrice, err := client.SuggestGasPrice(context.Background())
+			// if err != nil {
+			// 	log.Fatalf("Failed to suggest gas price: %v", err)
+			// }
 			toAddress := common.HexToAddress(account["toAddress"])
-			gasPrice, err := client.SuggestGasPrice(context.Background())
-			if err != nil {
-				log.Fatalf("Failed to suggest gas price: %v", err)
-			}
 
 			var tx *types.Transaction
 			switch txData := accountTxs[i].(type) {
@@ -115,17 +112,18 @@ func main() {
 				// txData.Nonce = nonce
 				txData.To = &toAddress
 				txData.Value = value
-				txData.Gas = gasLimit
-				txData.GasPrice = gasPrice
+				txData.Gas = gas
+				txData.GasFeeCap = big.NewInt(6 * 1_000_000_000)
+				txData.GasTipCap = big.NewInt(3 * 1_000_000_000)
 				txData.Data = data
 				tx = types.NewTx(&txData)
 			case types.DynamicFeeTx:
 				// txData.Nonce = nonce
 				txData.To = &toAddress
 				txData.Value = value
-				txData.Gas = gasLimit
-				txData.GasFeeCap = big.NewInt(5)
-				txData.GasTipCap = big.NewInt(2)
+				txData.Gas = gas
+				txData.GasFeeCap = big.NewInt(5 * 1_000_000_000)
+				txData.GasTipCap = big.NewInt(2 * 1_000_000_000)
 				txData.Data = data
 				tx = types.NewTx(&txData)
 			}
