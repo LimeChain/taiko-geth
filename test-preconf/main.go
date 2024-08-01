@@ -5,10 +5,10 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum"
 	"log"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -140,7 +140,7 @@ func main() {
 				log.Fatalf("Failed to send transaction: %v", err)
 			}
 
-			fmt.Printf("Submitted Tx hash: %s\n", signedTx.Hash().Hex())
+			fmt.Println(fmt.Sprintf("Submitted Tx hash: %s", signedTx.Hash()))
 
 			_, _, err = client.TransactionByHash(context.Background(), signedTx.Hash())
 			if err != nil {
@@ -162,7 +162,7 @@ func main() {
 				}
 			}
 
-			fmt.Println(fmt.Sprintf("TxHash: [%s], Transaction receipt, Status: [%d], Block Number: [%d]", signedTx.Hash(), txReceipt.Status, txReceipt.BlockNumber))
+			fmt.Println(fmt.Sprintf("Transaction receipt: TxHash [%s], Block Number: [%d], Status: [%d]", signedTx.Hash(), txReceipt.BlockNumber, txReceipt.Status))
 		}
 	}
 }
