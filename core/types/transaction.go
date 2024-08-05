@@ -363,26 +363,25 @@ func (tx *Transaction) EffectiveGasTip(baseFee *big.Int) (*big.Int, error) {
 	if baseFee == nil {
 		return tx.GasTipCap(), nil
 	}
+
+	// CHANGE(limechain): increase the base by premium percentage, that will go into the treasury.
+	if tx.Type() == InclusionPreconfirmationTxType {
+		log.Error("Transaction: EffectiveGasTip: base fee", "value", baseFee)
+		premiumFee := new(big.Int).Div(
+			new(big.Int).Mul(new(big.Int).SetUint64(params.InclusionPreconfirmationFeePremium), baseFee),
+			new(big.Int).SetUint64(100),
+		)
+		baseFee = new(big.Int).Add(baseFee, premiumFee)
+		log.Error("Transaction: EffectiveGasTip: adjusted base fee", "value", baseFee)
+	}
+
 	var err error
 	gasFeeCap := tx.GasFeeCap()
 	if gasFeeCap.Cmp(baseFee) == -1 {
 		err = ErrGasFeeCapTooLow
 	}
 
-	var tip *big.Int
-	if tx.Type() == InclusionPreconfirmationTxType {
-		premiumFeePerGas := new(big.Int).Mul(
-			new(big.Int).SetUint64(params.InclusionPreconfirmationFeePremium),
-			baseFee,
-		)
-		tip = premiumFeePerGas.Div(premiumFeePerGas, new(big.Int).SetUint64(100))
-		log.Error("Inclusion tx effective gas tip", "value", tip.Uint64())
-	} else {
-		tip = math.BigMin(tx.GasTipCap(), gasFeeCap.Sub(gasFeeCap, baseFee))
-		log.Error("Dynamic tx effective gas tip", "value", tip.Uint64())
-	}
-
-	return tip, err
+	return math.BigMin(tx.GasTipCap(), gasFeeCap.Sub(gasFeeCap, baseFee)), err
 }
 
 // EffectiveGasTipValue is identical to EffectiveGasTip, but does not return an

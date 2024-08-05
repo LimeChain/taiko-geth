@@ -21,6 +21,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 )
@@ -105,14 +106,21 @@ func (tx *InclusionPreconfirmationTx) effectiveGasPrice(dst *big.Int, baseFee *b
 	if baseFee == nil {
 		return dst.Set(tx.GasFeeCap)
 	}
-	premiumFeePerGas := dst.Mul(
-		new(big.Int).SetUint64(params.InclusionPreconfirmationFeePremium),
-		baseFee,
+
+	log.Error("InclusionPreconfirmationTx: effectiveGasPrice: base fee", "value", baseFee)
+	// Increase the base by premium percentage, that will go into the treasury.
+	premiumFee := new(big.Int).Div(
+		new(big.Int).Mul(new(big.Int).SetUint64(params.InclusionPreconfirmationFeePremium), baseFee),
+		new(big.Int).SetUint64(100),
 	)
-	tip := premiumFeePerGas.Div(premiumFeePerGas, new(big.Int).SetUint64(100))
+	baseFee = new(big.Int).Add(baseFee, premiumFee)
+	log.Error("InclusionPreconfirmationTx: effectiveGasPrice: adjusted base fee", "value", baseFee)
+
+	tip := dst.Sub(tx.GasFeeCap, baseFee)
 	if tip.Cmp(tx.GasTipCap) > 0 {
 		tip.Set(tx.GasTipCap)
 	}
+	log.Error("InclusionPreconfirmationTx:", "GasFeeCap", tx.GasFeeCap, "GasTipCap", tx.GasTipCap, "baseFee", baseFee)
 	return tip.Add(tip, baseFee)
 }
 

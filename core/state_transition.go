@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -149,6 +150,9 @@ type Message struct {
 
 	// CHANGE(taiko): whether the current transaction is the first TaikoL2.anchor transaction in a block.
 	IsAnchor bool
+
+	// CHANGE(limechain): whether the current transaction is a preconfirmation transaction.
+	IsPreconf bool
 }
 
 // TransactionToMessage converts a transaction into a Message.
@@ -167,10 +171,25 @@ func TransactionToMessage(tx *types.Transaction, s types.Signer, baseFee *big.In
 		BlobHashes:        tx.BlobHashes(),
 		BlobGasFeeCap:     tx.BlobGasFeeCap(),
 		IsAnchor:          tx.IsAnchor(),
+		// CHANGE(limechain):
+		IsPreconf: tx.Type() == types.InclusionPreconfirmationTxType,
 	}
 	// If baseFee provided, set gasPrice to effectiveGasPrice.
 	if baseFee != nil {
+		if msg.IsPreconf {
+			log.Error("TransactionToMessage: base fee", "value", baseFee)
+			// Increase the base by premium percentage, that will go into the treasury.
+			premiumFee := new(big.Int).Div(
+				new(big.Int).Mul(new(big.Int).SetUint64(params.InclusionPreconfirmationFeePremium), baseFee),
+				new(big.Int).SetUint64(100),
+			)
+			baseFee = new(big.Int).Add(baseFee, premiumFee)
+			log.Error("TransactionToMessage: adjusted base fee", "value", baseFee)
+		}
+
 		msg.GasPrice = cmath.BigMin(msg.GasPrice.Add(msg.GasTipCap, baseFee), msg.GasFeeCap)
+
+		log.Error("TransactionToMessage:", "gasPrice", msg.GasPrice, "GasTipCap", msg.GasTipCap, "GasFeeCap", msg.GasFeeCap)
 	}
 	var err error
 	msg.From, err = types.Sender(s, tx)
@@ -454,8 +473,20 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		gasRefund = st.refundGas(params.RefundQuotientEIP3529)
 	}
 	effectiveTip := msg.GasPrice
+	baseFee := st.evm.Context.BaseFee
+
 	if rules.IsLondon {
-		effectiveTip = cmath.BigMin(msg.GasTipCap, new(big.Int).Sub(msg.GasFeeCap, st.evm.Context.BaseFee))
+		if st.msg.IsPreconf && baseFee != nil {
+			log.Error("TransitionDb: base fee", "value", baseFee)
+			// Increase the base by premium percentage, that will go into the treasury.
+			premiumFee := new(big.Int).Div(
+				new(big.Int).Mul(new(big.Int).SetUint64(params.InclusionPreconfirmationFeePremium), baseFee),
+				new(big.Int).SetUint64(100),
+			)
+			baseFee = new(big.Int).Add(baseFee, premiumFee)
+			log.Error("TransitionDb: adjusted base fee", "value", baseFee)
+		}
+		effectiveTip = cmath.BigMin(msg.GasTipCap, new(big.Int).Sub(msg.GasFeeCap, baseFee))
 	}
 	effectiveTipU256, _ := uint256.FromBig(effectiveTip)
 
@@ -468,10 +499,10 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		fee.Mul(fee, effectiveTipU256)
 		st.state.AddBalance(st.evm.Context.Coinbase, fee)
 		// CHANGE(taiko): basefee is not burnt, but sent to a treasury instead.
-		if st.evm.ChainConfig().Taiko && st.evm.Context.BaseFee != nil && !st.msg.IsAnchor {
+		if st.evm.ChainConfig().Taiko && baseFee != nil && !st.msg.IsAnchor {
 			st.state.AddBalance(
 				st.getTreasuryAddress(),
-				uint256.MustFromBig(new(big.Int).Mul(st.evm.Context.BaseFee, new(big.Int).SetUint64(st.gasUsed()))),
+				uint256.MustFromBig(new(big.Int).Mul(baseFee, new(big.Int).SetUint64(st.gasUsed()))),
 			)
 		}
 	}
