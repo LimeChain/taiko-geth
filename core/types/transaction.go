@@ -377,20 +377,7 @@ func (tx *Transaction) EffectiveGasTip(baseFee *big.Int) (*big.Int, error) {
 		err = ErrGasFeeCapTooLow
 	}
 
-	var tip *big.Int
-	if tx.Type() == InclusionPreconfirmationTxType {
-		premiumFeePerGas := new(big.Int).Mul(
-			new(big.Int).SetUint64(params.InclusionPreconfirmationFeePremium),
-			baseFee,
-		)
-		tip = premiumFeePerGas.Div(premiumFeePerGas, new(big.Int).SetUint64(100))
-		log.Error("Inclusion tx effective gas tip", "value", tip.Uint64())
-	} else {
-		tip = math.BigMin(tx.GasTipCap(), gasFeeCap.Sub(gasFeeCap, baseFee))
-		log.Error("Dynamic tx effective gas tip", "value", tip.Uint64())
-	}
-
-	return tip, err
+	return math.BigMin(tx.GasTipCap(), gasFeeCap.Sub(gasFeeCap, baseFee)), err
 }
 
 // EffectiveGasTipValue is identical to EffectiveGasTip, but does not return an

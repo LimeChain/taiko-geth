@@ -481,7 +481,7 @@ func (s *PersonalAccountAPI) SendTransaction(ctx context.Context, args Transacti
 		log.Warn("Failed transaction send attempt", "from", args.from(), "to", args.To, "value", args.Value.ToInt(), "err", err)
 		return common.Hash{}, err
 	}
-	return SubmitTransaction(ctx, s.b, signed, nil)
+	return SubmitTransaction(ctx, s.b, signed)
 }
 
 // SignTransaction will create a transaction from the given arguments and
@@ -508,7 +508,7 @@ func (s *PersonalAccountAPI) SignTransaction(ctx context.Context, args Transacti
 	}
 	// Before actually signing the transaction, ensure the transaction fee is reasonable.
 	tx := args.toTransaction()
-	if err := checkTxFee(tx.Type(), tx.GasPrice(), tx.Gas(), s.b.RPCTxFeeCap(), tx.GasTipCap(), nil); err != nil {
+	if err := checkTxFee(tx.GasPrice(), tx.Gas(), s.b.RPCTxFeeCap()); err != nil {
 		return nil, err
 	}
 	signed, err := s.signTransaction(ctx, &args, passwd)
@@ -1819,10 +1819,10 @@ func (s *TransactionAPI) sign(addr common.Address, tx *types.Transaction) (*type
 }
 
 // SubmitTransaction is a helper function that submits tx to txPool and logs a message.
-func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction, baseFee *big.Int) (common.Hash, error) {
+func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (common.Hash, error) {
 	// If the transaction fee cap is already specified, ensure the
 	// fee of the given transaction is _reasonable_.
-	if err := checkTxFee(tx.Type(), tx.GasPrice(), tx.Gas(), b.RPCTxFeeCap(), tx.GasTipCap(), baseFee); err != nil {
+	if err := checkTxFee(tx.GasPrice(), tx.Gas(), b.RPCTxFeeCap()); err != nil {
 		return common.Hash{}, err
 	}
 
@@ -2026,7 +2026,7 @@ func (s *TransactionAPI) SendTransaction(ctx context.Context, args TransactionAr
 	if err != nil {
 		return common.Hash{}, err
 	}
-	return SubmitTransaction(ctx, s.b, signed, nil)
+	return SubmitTransaction(ctx, s.b, signed)
 }
 
 // FillTransaction fills the defaults (nonce, gas, gasPrice or 1559 fields)
@@ -2055,15 +2055,7 @@ func (s *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil.B
 	if err := tx.UnmarshalBinary(input); err != nil {
 		return common.Hash{}, err
 	}
-
-	baseFee := big.NewInt(0)
-	if tx.Type() == types.InclusionPreconfirmationTxType {
-		if head := s.b.CurrentHeader(); head.BaseFee != nil {
-			baseFee = head.BaseFee
-		}
-	}
-
-	return SubmitTransaction(ctx, s.b, tx, baseFee)
+	return SubmitTransaction(ctx, s.b, tx)
 }
 
 // Sign calculates an ECDSA signature for:
@@ -2118,7 +2110,7 @@ func (s *TransactionAPI) SignTransaction(ctx context.Context, args TransactionAr
 	}
 	// Before actually sign the transaction, ensure the transaction fee is reasonable.
 	tx := args.toTransaction()
-	if err := checkTxFee(tx.Type(), tx.GasPrice(), tx.Gas(), s.b.RPCTxFeeCap(), tx.GasTipCap(), nil); err != nil {
+	if err := checkTxFee(tx.GasPrice(), tx.Gas(), s.b.RPCTxFeeCap()); err != nil {
 		return nil, err
 	}
 	signed, err := s.sign(args.from(), tx)
@@ -2176,7 +2168,7 @@ func (s *TransactionAPI) Resend(ctx context.Context, sendArgs TransactionArgs, g
 	if gasLimit != nil {
 		gas = uint64(*gasLimit)
 	}
-	if err := checkTxFee(matchTx.Type(), price, gas, s.b.RPCTxFeeCap(), matchTx.GasTipCap(), nil); err != nil {
+	if err := checkTxFee(price, gas, s.b.RPCTxFeeCap()); err != nil {
 		return common.Hash{}, err
 	}
 	// Iterate the pending list for replacement
@@ -2368,7 +2360,7 @@ func (s *NetAPI) Version() string {
 
 // checkTxFee is an internal function used to check whether the fee of
 // the given transaction is _reasonable_(under the cap).
-func checkTxFee(txType uint8, gasPrice *big.Int, gas uint64, cap float64, tipCap *big.Int, baseFee *big.Int) error {
+func checkTxFee(gasPrice *big.Int, gas uint64, cap float64) error {
 	// Short circuit if there is no cap for transaction fee at all.
 	if cap == 0 {
 		return nil
@@ -2382,29 +2374,6 @@ func checkTxFee(txType uint8, gasPrice *big.Int, gas uint64, cap float64, tipCap
 
 	if feeFloat > cap {
 		return fmt.Errorf("tx fee (%.2f ether) exceeds the configured cap (%.2f ether)", feeFloat, cap)
-	}
-
-	// Check whether inclusion tx tip is enough to pay for premium miner fee.
-	if txType == types.InclusionPreconfirmationTxType && baseFee != nil {
-		tipCapEth := new(big.Float).Quo(
-			new(big.Float).SetInt(tipCap),
-			new(big.Float).SetInt(big.NewInt(params.Ether)),
-		)
-		tipCapFloat, _ := tipCapEth.Float64()
-
-		baseFeeEth := new(big.Float).Quo(
-			new(big.Float).SetInt(baseFee),
-			new(big.Float).SetInt(big.NewInt(params.Ether)),
-		)
-		premiumPercentageFloat := new(big.Float).Mul(big.NewFloat(float64(params.InclusionPreconfirmationFeePremium)), baseFeeEth)
-		tipEth := big.NewFloat(0).Quo(premiumPercentageFloat, big.NewFloat(100))
-
-		minerFees := new(big.Float).Add(baseFeeEth, tipEth)
-		minerFeesFloat, _ := minerFees.Float64()
-
-		if minerFeesFloat > tipCapFloat {
-			return fmt.Errorf("tip cap (%.32f ether) is not enough to pay for base fee and tip (%.32f ether)", tipCapFloat, minerFeesFloat)
-		}
 	}
 
 	return nil
