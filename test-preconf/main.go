@@ -132,12 +132,12 @@ func main() {
 				log.Fatalf("Failed to send transaction: %v", err)
 			}
 
-			fmt.Printf("Submitted Tx hash: %s", signedTx.Hash())
+			fmt.Printf("Submitted Tx hash: %s\n", signedTx.Hash())
 
 			_, _, err = client.TransactionByHash(context.Background(), signedTx.Hash())
 			if err != nil {
 				if errors.Is(err, ethereum.NotFound) {
-					fmt.Printf("Tx Hash [%s]: Transaction not found", signedTx.Hash())
+					fmt.Printf("Tx Hash [%s]: Transaction not found\n", signedTx.Hash())
 					continue
 				} else {
 					log.Fatalf("Failed to get transaction by hash %v, hash %s", err, signedTx.Hash())
@@ -147,15 +147,15 @@ func main() {
 			txReceipt, err := client.TransactionReceipt(context.Background(), signedTx.Hash())
 			if err != nil {
 				if errors.Is(err, ethereum.NotFound) {
-					fmt.Printf("Tx Hash [%s]: Transaction receipt not found", signedTx.Hash())
+					fmt.Printf("Tx Hash [%s]: Transaction receipt not found\n", signedTx.Hash())
 					continue
 				} else {
 					log.Fatalf("Failed to get transaction receipt: %v", err)
 				}
 			}
 
-			fmt.Printf("Transaction receipt: TxHash [%s], Block Number: [%d], Status: [%d], Cumulative Gas Used: [%d], EffectiveGasPrice: [%d], GasUsed: [%d]", signedTx.Hash(), txReceipt.BlockNumber, txReceipt.Status,
-				txReceipt.CumulativeGasUsed, txReceipt.EffectiveGasPrice, txReceipt.GasUsed)
+			fmt.Printf("Transaction receipt: TxHash [%s], Block Number: [%d], Status: [%d], Cumulative Gas Used: [%d], EffectiveGasPrice: [%d], GasUsed: [%d]\n",
+				signedTx.Hash(), txReceipt.BlockNumber, txReceipt.Status, txReceipt.CumulativeGasUsed, txReceipt.EffectiveGasPrice, txReceipt.GasUsed)
 		}
 	}
 }
