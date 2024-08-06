@@ -1145,7 +1145,6 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	if w.chainConfig.IsLondon(header.Number) {
 		if w.chainConfig.Taiko && genParams.baseFeePerGas != nil {
 			header.BaseFee = genParams.baseFeePerGas
-			log.Error("prepareWork: base fee", "value", header.BaseFee)
 		} else {
 			header.BaseFee = eip1559.CalcBaseFee(w.chainConfig, parent)
 			if !w.chainConfig.IsLondon(parent.Number) {
