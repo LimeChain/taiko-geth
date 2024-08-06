@@ -1175,6 +1175,7 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 		return 0, err
 	}
 
+	// CHANGE(limechain): increase the base by premium percentage, that will go into the treasury.
 	if args.Deadline != nil {
 		header.BaseFee = common.IncreaseByPercentage(params.InclusionPreconfirmationFeePremium, header.BaseFee)
 	}
@@ -2370,10 +2371,8 @@ func checkTxFee(gasPrice *big.Int, gas uint64, cap float64) error {
 		new(big.Float).SetInt(big.NewInt(params.Ether)),
 	)
 	feeFloat, _ := feeEth.Float64()
-
 	if feeFloat > cap {
 		return fmt.Errorf("tx fee (%.2f ether) exceeds the configured cap (%.2f ether)", feeFloat, cap)
 	}
-
 	return nil
 }
