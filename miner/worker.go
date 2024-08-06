@@ -912,7 +912,7 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 		signer := types.MakeSigner(w.chainConfig, receipt.BlockNumber, env.header.Time)
 		from, _ := types.Sender(signer, tx)
 		to := tx.To()
-		if head := w.chain.CurrentHeader(); head.BaseFee != nil {
+		if head := w.chain.CurrentHeader(); head != nil && head.BaseFee != nil {
 			receipt.EffectiveGasPrice = tx.EffectiveGasTipValue(head.BaseFee)
 		}
 		rawdb.WritePreconfReceipt(db, receipt, &from, to)
