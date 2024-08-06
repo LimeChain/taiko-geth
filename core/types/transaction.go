@@ -367,11 +367,7 @@ func (tx *Transaction) EffectiveGasTip(baseFee *big.Int) (*big.Int, error) {
 	// CHANGE(limechain): increase the base by premium percentage, that will go into the treasury.
 	if tx.Type() == InclusionPreconfirmationTxType {
 		log.Error("Transaction: EffectiveGasTip: base fee", "value", baseFee)
-		premiumFee := new(big.Int).Div(
-			new(big.Int).Mul(new(big.Int).SetUint64(params.InclusionPreconfirmationFeePremium), baseFee),
-			new(big.Int).SetUint64(100),
-		)
-		baseFee = new(big.Int).Add(baseFee, premiumFee)
+		baseFee = common.IncreaseByPercentage(params.InclusionPreconfirmationFeePremium, baseFee)
 		log.Error("Transaction: EffectiveGasTip: adjusted base fee", "value", baseFee)
 	}
 

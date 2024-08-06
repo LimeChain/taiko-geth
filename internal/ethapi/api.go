@@ -1427,11 +1427,7 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
 func effectiveGasPrice(tx *types.Transaction, baseFee *big.Int) *big.Int {
 	// CHANGE(limechain): increase the base by premium percentage, that will go into the treasury.
 	if tx.Type() == types.InclusionPreconfirmationTxType {
-		premiumFee := new(big.Int).Div(
-			new(big.Int).Mul(new(big.Int).SetUint64(params.InclusionPreconfirmationFeePremium), baseFee),
-			new(big.Int).SetUint64(100),
-		)
-		baseFee = new(big.Int).Add(baseFee, premiumFee)
+		baseFee = common.IncreaseByPercentage(params.InclusionPreconfirmationFeePremium, baseFee)
 	}
 
 	fee := tx.GasTipCap()
