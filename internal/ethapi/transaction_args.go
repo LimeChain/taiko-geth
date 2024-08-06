@@ -74,6 +74,10 @@ type TransactionArgs struct {
 
 	// This configures whether blobs are allowed to be passed.
 	blobSidecarAllowed bool
+
+	// CHANGE(limechain):
+	// Introduced by InclusionPreconfirmationTxType transaction.
+	Deadline *hexutil.Big `json:"deadline"`
 }
 
 // from retrieves the transaction sender address.
@@ -512,6 +516,19 @@ func (args *TransactionArgs) toTransaction() *types.Transaction {
 			Value:      (*big.Int)(args.Value),
 			Data:       args.data(),
 			AccessList: *args.AccessList,
+		}
+
+	case args.Deadline != nil:
+		data = &types.InclusionPreconfirmationTx{
+			ChainID:   (*big.Int)(args.ChainID),
+			Nonce:     uint64(*args.Nonce),
+			GasTipCap: (*big.Int)(args.MaxPriorityFeePerGas),
+			GasFeeCap: (*big.Int)(args.MaxFeePerGas),
+			Gas:       uint64(*args.Gas),
+			To:        args.To,
+			Value:     (*big.Int)(args.Value),
+			Data:      args.data(),
+			Deadline:  (*big.Int)(args.Deadline),
 		}
 
 	default:

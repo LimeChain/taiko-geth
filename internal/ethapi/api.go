@@ -1174,6 +1174,11 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 	if err = overrides.Apply(state); err != nil {
 		return 0, err
 	}
+
+	if args.Deadline != nil {
+		header.BaseFee = common.IncreaseByPercentage(params.InclusionPreconfirmationFeePremium, header.BaseFee)
+	}
+
 	// Construct the gas estimator option from the user input
 	opts := &gasestimator.Options{
 		Config:     b.ChainConfig(),

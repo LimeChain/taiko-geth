@@ -107,16 +107,16 @@ func (tx *InclusionPreconfirmationTx) effectiveGasPrice(dst *big.Int, baseFee *b
 		return dst.Set(tx.GasFeeCap)
 	}
 
-	log.Error("InclusionPreconfirmationTx: effectiveGasPrice: base fee", "value", baseFee)
+	log.Info("InclusionPreconfirmationTx: effectiveGasPrice: base fee", "value", baseFee)
 	// Increase the base by premium percentage, that will go into the treasury.
 	baseFee = common.IncreaseByPercentage(params.InclusionPreconfirmationFeePremium, baseFee)
-	log.Error("InclusionPreconfirmationTx: effectiveGasPrice: adjusted base fee", "value", baseFee)
+	log.Info("InclusionPreconfirmationTx: effectiveGasPrice: adjusted base fee", "value", baseFee)
 
 	tip := dst.Sub(tx.GasFeeCap, baseFee)
 	if tip.Cmp(tx.GasTipCap) > 0 {
 		tip.Set(tx.GasTipCap)
 	}
-	log.Error("InclusionPreconfirmationTx:", "GasFeeCap", tx.GasFeeCap, "GasTipCap", tx.GasTipCap, "baseFee", baseFee)
+	log.Info("InclusionPreconfirmationTx:", "GasFeeCap", tx.GasFeeCap, "GasTipCap", tx.GasTipCap, "baseFee", baseFee)
 	return tip.Add(tip, baseFee)
 }
 
