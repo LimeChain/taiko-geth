@@ -28,6 +28,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -361,6 +363,14 @@ func (tx *Transaction) EffectiveGasTip(baseFee *big.Int) (*big.Int, error) {
 	if baseFee == nil {
 		return tx.GasTipCap(), nil
 	}
+
+	// CHANGE(limechain): increase the base by premium percentage, that will go into the treasury.
+	if tx.Type() == InclusionPreconfirmationTxType {
+		log.Info("Transaction: EffectiveGasTip: base fee", "value", baseFee)
+		baseFee = common.IncreaseByPercentage(params.InclusionPreconfirmationFeePremium, baseFee)
+		log.Info("Transaction: EffectiveGasTip: adjusted base fee", "value", baseFee)
+	}
+
 	var err error
 	gasFeeCap := tx.GasFeeCap()
 	if gasFeeCap.Cmp(baseFee) == -1 {

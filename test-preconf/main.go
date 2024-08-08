@@ -16,10 +16,8 @@ import (
 )
 
 var (
-	url = "http://127.0.0.1:28545"
-
-	chainID = big.NewInt(167001) // mainnet
-
+	url         = "http://127.0.0.1:28545"
+	chainID     = big.NewInt(167001) // mainnet
 	currentSlot = big.NewInt(52625)
 
 	accounts = []map[string]string{
@@ -35,9 +33,9 @@ var (
 		},
 	}
 
-	value    = big.NewInt(100000) //
-	gasLimit = uint64(200000)     // in units
-	data     []byte
+	value = big.NewInt(1_000) // in wei (1 eth = 1_000_000_000_000_000_000)
+	gas   = uint64(21_000)
+	data  = make([]byte, 0)
 )
 
 func main() {
@@ -64,6 +62,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to get nonce: %v", err)
 		}
+
 		fmt.Println()
 		fmt.Println("Account:", fromAddress)
 
@@ -93,39 +92,32 @@ func main() {
 			},
 		}
 
-		// Send pre-configured number of txs
 		accountTxs := accountsTxs[account["fromAddress"]]
-
 		for i := 0; i < len(accountTxs); i++ {
 			fmt.Println()
 
-			// nonce, err := client.PendingNonceAt(context.Background(), fromAddress)
+			// gasPrice, err := client.SuggestGasPrice(context.Background())
 			// if err != nil {
-			// 	log.Fatalf("Failed to get nonce: %v", err)
+			// 	log.Fatalf("Failed to suggest gas price: %v", err)
 			// }
 			toAddress := common.HexToAddress(account["toAddress"])
-			gasPrice, err := client.SuggestGasPrice(context.Background())
-			if err != nil {
-				log.Fatalf("Failed to suggest gas price: %v", err)
-			}
 
 			var tx *types.Transaction
 			switch txData := accountTxs[i].(type) {
 			case types.InclusionPreconfirmationTx:
-				// txData.Nonce = nonce
 				txData.To = &toAddress
 				txData.Value = value
-				txData.Gas = gasLimit
-				txData.GasPrice = gasPrice
+				txData.Gas = gas
+				txData.GasFeeCap = big.NewInt(6 * 1_000)
+				txData.GasTipCap = big.NewInt(4 * 1_000)
 				txData.Data = data
 				tx = types.NewTx(&txData)
 			case types.DynamicFeeTx:
-				// txData.Nonce = nonce
 				txData.To = &toAddress
 				txData.Value = value
-				txData.Gas = gasLimit
-				txData.GasFeeCap = big.NewInt(5)
-				txData.GasTipCap = big.NewInt(2)
+				txData.Gas = gas
+				txData.GasFeeCap = big.NewInt(5 * 1_000)
+				txData.GasTipCap = big.NewInt(3 * 1_000)
 				txData.Data = data
 				tx = types.NewTx(&txData)
 			}
@@ -140,12 +132,12 @@ func main() {
 				log.Fatalf("Failed to send transaction: %v", err)
 			}
 
-			fmt.Println(fmt.Sprintf("Submitted Tx hash: %s", signedTx.Hash()))
+			fmt.Printf("Submitted Tx hash: %s\n", signedTx.Hash())
 
 			_, _, err = client.TransactionByHash(context.Background(), signedTx.Hash())
 			if err != nil {
 				if errors.Is(err, ethereum.NotFound) {
-					fmt.Println(fmt.Sprintf("Tx Hash [%s]: Transaction not found", signedTx.Hash()))
+					fmt.Printf("Tx Hash [%s]: Transaction not found\n", signedTx.Hash())
 					continue
 				} else {
 					log.Fatalf("Failed to get transaction by hash %v, hash %s", err, signedTx.Hash())
@@ -155,14 +147,15 @@ func main() {
 			txReceipt, err := client.TransactionReceipt(context.Background(), signedTx.Hash())
 			if err != nil {
 				if errors.Is(err, ethereum.NotFound) {
-					fmt.Println(fmt.Sprintf("Tx Hash [%s]: Transaction receipt not found", signedTx.Hash()))
+					fmt.Printf("Tx Hash [%s]: Transaction receipt not found\n", signedTx.Hash())
 					continue
 				} else {
 					log.Fatalf("Failed to get transaction receipt: %v", err)
 				}
 			}
 
-			fmt.Println(fmt.Sprintf("Transaction receipt: TxHash [%s], Block Number: [%d], Status: [%d]", signedTx.Hash(), txReceipt.BlockNumber, txReceipt.Status))
+			fmt.Printf("Transaction receipt: TxHash [%s], Block Number: [%d], Status: [%d], Cumulative Gas Used: [%d], EffectiveGasPrice: [%d], GasUsed: [%d]\n",
+				signedTx.Hash(), txReceipt.BlockNumber, txReceipt.Status, txReceipt.CumulativeGasUsed, txReceipt.EffectiveGasPrice, txReceipt.GasUsed)
 		}
 	}
 }

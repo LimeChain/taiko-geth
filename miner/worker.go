@@ -904,6 +904,7 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 	env.txs = append(env.txs, tx)
 	env.receipts = append(env.receipts, receipt)
 
+	// CHANGE(limechain):
 	// Store preconf receipt under the tx hash for later retrieval
 	// without having canonical block data available.
 	db := w.eth.BlockChain().DB()
@@ -911,6 +912,9 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 		signer := types.MakeSigner(w.chainConfig, receipt.BlockNumber, env.header.Time)
 		from, _ := types.Sender(signer, tx)
 		to := tx.To()
+		if head := w.chain.CurrentHeader(); head != nil && head.BaseFee != nil {
+			receipt.EffectiveGasPrice = tx.EffectiveGasTipValue(head.BaseFee)
+		}
 		rawdb.WritePreconfReceipt(db, receipt, &from, to)
 		log.Info("Store inclusion preconfirmation tx receipt", "index", receipt.TransactionIndex, "hash", tx.Hash().String(), "from", from.String(), "to", to.String())
 	}

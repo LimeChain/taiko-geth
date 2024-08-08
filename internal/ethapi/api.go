@@ -1174,6 +1174,12 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 	if err = overrides.Apply(state); err != nil {
 		return 0, err
 	}
+
+	// CHANGE(limechain): increase the base by premium percentage, that will go into the treasury.
+	if args.Deadline != nil {
+		header.BaseFee = common.IncreaseByPercentage(params.InclusionPreconfirmationFeePremium, header.BaseFee)
+	}
+
 	// Construct the gas estimator option from the user input
 	opts := &gasestimator.Options{
 		Config:     b.ChainConfig(),
@@ -1409,6 +1415,9 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
 		result.ChainID = (*hexutil.Big)(tx.ChainId())
 		result.YParity = &yparity
 		result.Deadline = (*hexutil.Big)(tx.Deadline())
+		result.GasFeeCap = (*hexutil.Big)(tx.GasFeeCap())
+		result.GasTipCap = (*hexutil.Big)(tx.GasTipCap())
+		// if the transaction has been mined, compute the effective gas price
 		if baseFee != nil && blockHash != (common.Hash{}) {
 			result.GasPrice = (*hexutil.Big)(effectiveGasPrice(tx, baseFee))
 		} else {
@@ -1422,6 +1431,11 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
 //
 //	price = min(gasTipCap + baseFee, gasFeeCap)
 func effectiveGasPrice(tx *types.Transaction, baseFee *big.Int) *big.Int {
+	// CHANGE(limechain): increase the base by premium percentage, that will go into the treasury.
+	if tx.Type() == types.InclusionPreconfirmationTxType {
+		baseFee = common.IncreaseByPercentage(params.InclusionPreconfirmationFeePremium, baseFee)
+	}
+
 	fee := tx.GasTipCap()
 	fee = fee.Add(fee, baseFee)
 	if tx.GasFeeCapIntCmp(fee) < 0 {
@@ -2351,7 +2365,11 @@ func checkTxFee(gasPrice *big.Int, gas uint64, cap float64) error {
 	if cap == 0 {
 		return nil
 	}
-	feeEth := new(big.Float).Quo(new(big.Float).SetInt(new(big.Int).Mul(gasPrice, new(big.Int).SetUint64(gas))), new(big.Float).SetInt(big.NewInt(params.Ether)))
+
+	feeEth := new(big.Float).Quo(
+		new(big.Float).SetInt(new(big.Int).Mul(gasPrice, new(big.Int).SetUint64(gas))),
+		new(big.Float).SetInt(big.NewInt(params.Ether)),
+	)
 	feeFloat, _ := feeEth.Float64()
 	if feeFloat > cap {
 		return fmt.Errorf("tx fee (%.2f ether) exceeds the configured cap (%.2f ether)", feeFloat, cap)

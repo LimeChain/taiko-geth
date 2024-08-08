@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/filters"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 )
@@ -281,6 +282,16 @@ func (t *Transaction) GasPrice(ctx context.Context) hexutil.Big {
 			}
 		}
 		return hexutil.Big(*tx.GasPrice())
+		// CHANGE(limechain):
+	case types.InclusionPreconfirmationTxType:
+		if block != nil {
+			if baseFee, _ := block.BaseFeePerGas(ctx); baseFee != nil {
+				baseFee = (*hexutil.Big)(common.IncreaseByPercentage(params.InclusionPreconfirmationFeePremium, baseFee.ToInt()))
+				// price = min(gasTipCap + baseFee, gasFeeCap)
+				return (hexutil.Big)(*math.BigMin(new(big.Int).Add(tx.GasTipCap(), baseFee.ToInt()), tx.GasFeeCap()))
+			}
+		}
+		return hexutil.Big(*tx.GasPrice())
 	default:
 		return hexutil.Big(*tx.GasPrice())
 	}
@@ -311,7 +322,7 @@ func (t *Transaction) MaxFeePerGas(ctx context.Context) *hexutil.Big {
 		return nil
 	}
 	switch tx.Type() {
-	case types.DynamicFeeTxType, types.BlobTxType:
+	case types.DynamicFeeTxType, types.BlobTxType, types.InclusionPreconfirmationTxType:
 		return (*hexutil.Big)(tx.GasFeeCap())
 	default:
 		return nil
@@ -324,7 +335,7 @@ func (t *Transaction) MaxPriorityFeePerGas(ctx context.Context) *hexutil.Big {
 		return nil
 	}
 	switch tx.Type() {
-	case types.DynamicFeeTxType, types.BlobTxType:
+	case types.DynamicFeeTxType, types.BlobTxType, types.InclusionPreconfirmationTxType:
 		return (*hexutil.Big)(tx.GasTipCap())
 	default:
 		return nil

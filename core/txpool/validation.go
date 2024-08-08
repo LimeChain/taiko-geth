@@ -74,6 +74,10 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	if !opts.Config.IsCancun(head.Number, head.Time) && tx.Type() == types.BlobTxType {
 		return fmt.Errorf("%w: type %d rejected, pool not yet in Cancun", core.ErrTxTypeNotSupported, tx.Type())
 	}
+	// CHANGE(limechain): allow preconf transactions to be included in the pool
+	if !opts.Config.IsPreconf(head.Number, head.Time) && tx.Type() == types.InclusionPreconfirmationTxType {
+		return fmt.Errorf("%w: type %d rejected, pool not yet in Preconf", core.ErrTxTypeNotSupported, tx.Type())
+	}
 	// Check whether the init code size has been exceeded
 	if opts.Config.IsShanghai(head.Number, head.Time) && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
 		return fmt.Errorf("%w: code size %v, limit %v", core.ErrMaxInitCodeSizeExceeded, len(tx.Data()), params.MaxInitCodeSize)
