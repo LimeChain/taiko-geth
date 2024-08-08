@@ -654,7 +654,14 @@ func (pool *LegacyPool) validateTx(tx *types.Transaction, local bool) error {
 			}
 			return nil
 		},
+		PendingTxs: func(addr common.Address) types.Transactions {
+			if list := pool.pending[addr]; list != nil {
+				return list.txs.Flatten()
+			}
+			return types.Transactions{}
+		},
 	}
+
 	if err := txpool.ValidateTransactionWithState(tx, pool.signer, opts); err != nil {
 		return err
 	}

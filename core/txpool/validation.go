@@ -201,6 +201,8 @@ type ValidationOptionsWithState struct {
 	// ExistingCost is a mandatory callback to retrieve an already pooled
 	// transaction's cost with the given nonce to check for overdrafts.
 	ExistingCost func(addr common.Address, nonce uint64) *big.Int
+
+	PendingTxs func(addr common.Address) types.Transactions
 }
 
 // ValidateTransactionWithState is a helper method to check whether a transaction
@@ -215,6 +217,27 @@ func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, op
 		log.Error("Transaction sender recovery failed", "err", err)
 		return err
 	}
+
+	// CHANGE(limechain): reject inclusion preconfirmation txs if there are already
+	// other type of txs in the pool that might not get included in the block
+	pendingTxs := opts.PendingTxs(from)
+	pendingTxsCount := len(pendingTxs)
+	log.Info("ValidateTransactionWithState", "pending tx count", pendingTxsCount)
+	if pendingTxsCount > 0 {
+		lastTx := pendingTxs[pendingTxsCount-1]
+
+		log.Info("ValidateTransactionWithState",
+			"last tx hash", lastTx.Hash(), "last tx type", lastTx.Type(), "last tx nonce", lastTx.Nonce(),
+			"current tx hash", tx.Hash(), "current tx type", tx.Type(), "current tx nonce", tx.Nonce(),
+		)
+
+		if lastTx.Type() != types.InclusionPreconfirmationTxType && tx.Type() == types.InclusionPreconfirmationTxType {
+			err := fmt.Errorf("%w: hash %v type %v nonce %v", core.ErrUnableToPreconfirmTx, tx.Hash(), tx.Type(), tx.Nonce())
+			log.Error("Tx rejected", "err", err)
+			return err
+		}
+	}
+
 	next := opts.State.GetNonce(from)
 	if next > tx.Nonce() {
 		return fmt.Errorf("%w: next nonce %v, tx nonce %v", core.ErrNonceTooLow, next, tx.Nonce())

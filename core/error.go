@@ -110,4 +110,6 @@ var (
 
 	// ErrBlobTxCreate is returned if a blob transaction has no explicit to field.
 	ErrBlobTxCreate = errors.New("blob transaction of type create")
+
+	ErrUnableToPreconfirmTx = errors.New("unable to preconfirm inclusion tx")
 )
