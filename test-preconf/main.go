@@ -100,10 +100,6 @@ func main() {
 			// if err != nil {
 			// 	log.Fatalf("Failed to suggest gas price: %v", err)
 			// }
-			// gasPrice, err := client.SuggestGasPrice(context.Background())
-			// if err != nil {
-			// 	log.Fatalf("Failed to suggest gas price: %v", err)
-			// }
 			toAddress := common.HexToAddress(account["toAddress"])
 
 			var tx *types.Transaction
