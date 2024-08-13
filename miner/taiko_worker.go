@@ -45,7 +45,7 @@ func (w *worker) BuildTransactionList(
 
 	// Check if tx pool is empty at first.
 	if len(w.eth.TxPool().Pending(txpool.PendingFilter{BaseFee: uint256.MustFromBig(baseFee), OnlyPlainTxs: true})) == 0 {
-		// Tx pool has been reset, reset the tx pool snapshot.
+		// CHANGE(limechain): tx pool has been reset, reset the tx pool snapshot.
 		w.ResetTxPoolSnapshot()
 		return nil
 	}
@@ -103,7 +103,7 @@ func (w *worker) BuildTransactionList(
 			return nil, err
 		}
 
-		// Keep the tx pool snapshot up to date.
+		// CHANGE(limechain): keep the tx pool snapshot up to date.
 		txPoolSnapshot := w.UpdatePendingTxsInPoolSnapshot(env.txs, b, env)
 		return txPoolSnapshot, nil
 	}

@@ -242,7 +242,7 @@ type worker struct {
 	fullTaskHook func()                             // Method to call before pushing the full sealing task.
 	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
 
-	// Tx pool snapshot
+	// CHANGE(limechain): tx pool snapshot
 	txPoolSnapshotMutex sync.RWMutex
 	pendingTxCache      map[common.Hash]bool
 	proposedTxCache     map[common.Hash]bool
