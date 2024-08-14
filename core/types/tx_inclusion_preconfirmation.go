@@ -21,10 +21,11 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 )
+
+// CHANGE(limechain): new preconfirmation tx type
 
 // InclusionPreconfirmationTx is the data of EIP-2930 access list transactions.
 type InclusionPreconfirmationTx struct {
@@ -107,16 +108,14 @@ func (tx *InclusionPreconfirmationTx) effectiveGasPrice(dst *big.Int, baseFee *b
 		return dst.Set(tx.GasFeeCap)
 	}
 
-	log.Info("InclusionPreconfirmationTx: effectiveGasPrice: base fee", "value", baseFee)
 	// Increase the base by premium percentage, that will go into the treasury.
 	baseFee = common.IncreaseByPercentage(params.InclusionPreconfirmationFeePremium, baseFee)
-	log.Info("InclusionPreconfirmationTx: effectiveGasPrice: adjusted base fee", "value", baseFee)
 
 	tip := dst.Sub(tx.GasFeeCap, baseFee)
 	if tip.Cmp(tx.GasTipCap) > 0 {
 		tip.Set(tx.GasTipCap)
 	}
-	log.Info("InclusionPreconfirmationTx:", "GasFeeCap", tx.GasFeeCap, "GasTipCap", tx.GasTipCap, "baseFee", baseFee)
+
 	return tip.Add(tip, baseFee)
 }
 

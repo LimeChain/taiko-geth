@@ -2460,6 +2460,7 @@ func (bc *BlockChain) GetTrieFlushInterval() time.Duration {
 	return time.Duration(bc.flushInterval.Load())
 }
 
+// CHANGE(limechain): expose DB method
 func (bc *BlockChain) DB() ethdb.Database {
 	return bc.db
 }

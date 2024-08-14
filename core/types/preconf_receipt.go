@@ -6,7 +6,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// PreconfReceipt extends Receipt by including additional From and To fields.
+// CHANGE(limechain): PreconfReceipt extends Receipt by including additional From and To fields.
 type PreconfReceipt struct {
 	// Embedding the receipt does not work correctly with the rlp encoding/decoding
 	// Receipt

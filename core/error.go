@@ -111,5 +111,6 @@ var (
 	// ErrBlobTxCreate is returned if a blob transaction has no explicit to field.
 	ErrBlobTxCreate = errors.New("blob transaction of type create")
 
+	// CHANGE(limechain): new error type for preconfirmation txs
 	ErrUnableToPreconfirmTx = errors.New("unable to preconfirm inclusion tx")
 )

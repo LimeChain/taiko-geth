@@ -61,9 +61,10 @@ var TaikoChainConfig = &ChainConfig{
 	BerlinBlock:                   common.Big0,
 	LondonBlock:                   common.Big0,
 	ShanghaiTime:                  u64(0),
-	PreconfTime:                   u64(0),
 	MergeNetsplitBlock:            nil,
 	TerminalTotalDifficulty:       common.Big0,
 	TerminalTotalDifficultyPassed: true,
 	Taiko:                         true,
+	// CHANGE(limechain):
+	PreconfTime: u64(0),
 }

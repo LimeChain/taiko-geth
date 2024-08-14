@@ -277,6 +277,7 @@ func New(config Config, chain BlockChain) *LegacyPool {
 // pool, specifically, whether it is a Legacy, AccessList or Dynamic transaction.
 func (pool *LegacyPool) Filter(tx *types.Transaction) bool {
 	switch tx.Type() {
+	// CHANGE(limechain): new preconfirmation tx type
 	case types.LegacyTxType, types.AccessListTxType, types.DynamicFeeTxType, types.InclusionPreconfirmationTxType:
 		return true
 	default:
@@ -604,6 +605,7 @@ func (pool *LegacyPool) local() map[common.Address]types.Transactions {
 // This check is meant as an early check which only needs to be performed once,
 // and does not require the pool mutex to be held.
 func (pool *LegacyPool) validateTxBasics(tx *types.Transaction, local bool) error {
+	// CHANGE(limechain): new preconfirmation tx type
 	opts := &txpool.ValidationOptions{
 		Config: pool.chainconfig,
 		Accept: 0 |
@@ -654,6 +656,7 @@ func (pool *LegacyPool) validateTx(tx *types.Transaction, local bool) error {
 			}
 			return nil
 		},
+		// CHANGE(limechain): function to get pending transactions
 		PendingTxs: func(addr common.Address) types.Transactions {
 			if list := pool.pending[addr]; list != nil {
 				return list.txs.Flatten()

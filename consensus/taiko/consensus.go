@@ -42,10 +42,8 @@ type Taiko struct {
 var _ = new(Taiko)
 
 func New(chainConfig *params.ChainConfig) *Taiko {
+	// TODO(limechain):
 	//taikoL2AddressPrefix := strings.TrimPrefix(chainConfig.ChainID.String(), "0")
-
-	taikoL2Address := common.HexToAddress("0x68694EA10e5FCe9F39256C7CEf923F097D8bcdD2")
-
 	return &Taiko{
 		chainConfig: chainConfig,
 		//taikoL2Address: common.HexToAddress(
@@ -54,7 +52,7 @@ func New(chainConfig *params.ChainConfig) *Taiko {
 		//		strings.Repeat("0", common.AddressLength*2-len(taikoL2AddressPrefix)-len(TaikoL2AddressSuffix)) +
 		//		TaikoL2AddressSuffix,
 		//),
-		taikoL2Address: taikoL2Address,
+		taikoL2Address: common.HexToAddress("0x68694EA10e5FCe9F39256C7CEf923F097D8bcdD2"),
 	}
 }
 

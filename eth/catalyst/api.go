@@ -196,6 +196,7 @@ func (api *ConsensusAPI) ForkchoiceUpdatedV2(update engine.ForkchoiceStateV1, pa
 			if params.Withdrawals != nil {
 				return engine.STATUS_INVALID, engine.InvalidParams.With(errors.New("withdrawals before shanghai"))
 			}
+			// CHANGE(limechain): add support for preconfirmation txs.
 		case forks.Preconf:
 			if params.Withdrawals == nil {
 				return engine.STATUS_INVALID, engine.InvalidParams.With(errors.New("missing withdrawals"))
@@ -224,6 +225,7 @@ func (api *ConsensusAPI) ForkchoiceUpdatedV3(update engine.ForkchoiceStateV1, pa
 		if params.BeaconRoot == nil {
 			return engine.STATUS_INVALID, engine.InvalidParams.With(errors.New("missing beacon root"))
 		}
+		// CHANGE(limechain): add support for preconfirmation txs.
 		if api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Preconf {
 			return engine.STATUS_INVALID, engine.UnsupportedFork.With(errors.New("forkchoiceUpdatedV3 must only be called for preconf payloads"))
 		}
@@ -343,7 +345,6 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 		// missing and we are requested to generate the payload in slot.
 	} else if isTaiko { // CHANGE(taiko): reorg is allowed in L2.
 		if latestValid, err := api.eth.BlockChain().SetCanonical(block); err != nil {
-			log.Info("Fork choice invalid status")
 			return engine.ForkChoiceResponse{PayloadStatus: engine.PayloadStatusV1{Status: engine.INVALID, LatestValidHash: &latestValid}}, err
 		}
 	} else {
@@ -559,6 +560,7 @@ func (api *ConsensusAPI) NewPayloadV2(params engine.ExecutableData) (engine.Payl
 	if api.eth.BlockChain().Config().IsCancun(api.eth.BlockChain().Config().LondonBlock, params.Timestamp) {
 		return engine.PayloadStatusV1{Status: engine.INVALID}, engine.InvalidParams.With(errors.New("can't use newPayloadV2 post-cancun"))
 	}
+	// CHANGE(limechain): add support for preconfirmation txs.
 	if api.eth.BlockChain().Config().LatestFork(params.Timestamp) == forks.Preconf {
 		if params.Withdrawals == nil &&
 			(api.eth.BlockChain().Config().Taiko && params.WithdrawalsHash == (common.Hash{})) {
@@ -596,7 +598,7 @@ func (api *ConsensusAPI) NewPayloadV3(params engine.ExecutableData, versionedHas
 	if beaconRoot == nil {
 		return engine.PayloadStatusV1{Status: engine.INVALID}, engine.InvalidParams.With(errors.New("nil beaconRoot post-cancun"))
 	}
-
+	// CHANGE(limechain): add support for preconfirmation txs.
 	if api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Preconf {
 		return engine.PayloadStatusV1{Status: engine.INVALID}, engine.UnsupportedFork.With(errors.New("newPayloadV3 must only be called for preconf payloads"))
 	}

@@ -202,6 +202,7 @@ type ValidationOptionsWithState struct {
 	// transaction's cost with the given nonce to check for overdrafts.
 	ExistingCost func(addr common.Address, nonce uint64) *big.Int
 
+	// CHANGE(limechain): callback to retrieve pending txs for an account.
 	PendingTxs func(addr common.Address) types.Transactions
 }
 

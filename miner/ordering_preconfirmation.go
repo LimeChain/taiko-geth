@@ -34,7 +34,7 @@ func (s txByTypePriceAndTime) Len() int { return len(s) }
 func (s txByTypePriceAndTime) Less(i, j int) bool {
 	// If the prices are equal, use the time the transaction was first seen for
 	// deterministic sorting
-	// CHANGE(limechain): inclusion tx should be processed with higher priority.
+	// CHANGE(limechain): preconfirmation txs should be processed with higher priority.
 	if s[i].tx.Tx.Type() == types.InclusionPreconfirmationTxType && s[j].tx.Tx.Type() == types.InclusionPreconfirmationTxType ||
 		s[i].tx.Tx.Type() != types.InclusionPreconfirmationTxType && s[j].tx.Tx.Type() != types.InclusionPreconfirmationTxType {
 		cmp := s[i].fees.Cmp(s[j].fees)

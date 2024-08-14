@@ -4,6 +4,8 @@ import (
 	"fmt"
 )
 
+// CHANGE(limechain): keep track of the current txs and block constraints per slot.
+
 type BlockConstraints struct {
 	EstimatedGasUsed uint64
 	BytesLength      uint64

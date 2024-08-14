@@ -40,6 +40,7 @@ type sigCache struct {
 func MakeSigner(config *params.ChainConfig, blockNumber *big.Int, blockTime uint64) Signer {
 	var signer Signer
 	switch {
+	// CHANGE(limechain):
 	case config.IsPreconf(blockNumber, blockTime):
 		signer = NewPreconfSigner(config.ChainID)
 	case config.IsCancun(blockNumber, blockTime):
@@ -67,6 +68,7 @@ func MakeSigner(config *params.ChainConfig, blockNumber *big.Int, blockTime uint
 // have the current block number available, use MakeSigner instead.
 func LatestSigner(config *params.ChainConfig) Signer {
 	if config.ChainID != nil {
+		// CHANGE(limechain):
 		if config.PreconfTime != nil {
 			return NewPreconfSigner(config.ChainID)
 		}
@@ -179,6 +181,8 @@ type Signer interface {
 	// Equal returns true if the given signer is the same as the receiver.
 	Equal(Signer) bool
 }
+
+// CHANGE(limechain): new preconfirmation tx signer
 
 type preconfSigner struct{ cancunSigner }
 

@@ -7,7 +7,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/miner"
 )
 
@@ -97,6 +96,5 @@ func (a *TaikoAuthAPIBackend) BuildTxList(
 
 // FetchTxList retrieves already pre-built list of txs.
 func (a *TaikoAuthAPIBackend) FetchTxList() ([]*miner.PreBuiltTxList, error) {
-	log.Info("Fetching L2 transactions to propose")
 	return a.eth.Miner().FetchTransactionList()
 }

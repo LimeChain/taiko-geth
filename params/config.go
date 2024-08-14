@@ -968,6 +968,7 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsCancun:         isMerge && c.IsCancun(num, timestamp),
 		IsPrague:         isMerge && c.IsPrague(num, timestamp),
 		IsVerkle:         isMerge && c.IsVerkle(num, timestamp),
-		IsPreconf:        isMerge && c.IsPreconf(num, timestamp),
+		// CHANGE(limechain): enables preconfirmation txs.
+		IsPreconf: isMerge && c.IsPreconf(num, timestamp),
 	}
 }
