@@ -1408,6 +1408,7 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
 		result.MaxFeePerBlobGas = (*hexutil.Big)(tx.BlobGasFeeCap())
 		result.BlobVersionedHashes = tx.BlobHashes()
 
+		// CHANGE(limechain): new preconfirmation tx type
 	case types.InclusionPreconfirmationTxType:
 		al := tx.AccessList()
 		yparity := hexutil.Uint64(v.Sign())
@@ -1689,7 +1690,7 @@ func (s *TransactionAPI) GetTransactionReceipt(ctx context.Context, hash common.
 	found, tx, blockHash, blockNumber, index, err := s.b.GetTransaction(ctx, hash)
 
 	if tx == nil {
-		// Check for preconfirmation tx receipt
+		// CHANGE(limechain): check for preconfirmation tx receipt
 		preconfReceipt := rawdb.ReadPreconfReceipt(s.b.ChainDb(), hash)
 		if preconfReceipt != nil {
 			return s.marshalPreconfReceipt(preconfReceipt), nil
@@ -1722,6 +1723,7 @@ func (s *TransactionAPI) GetTransactionReceipt(ctx context.Context, hash common.
 	return marshalReceipt(receipt, blockHash, blockNumber, signer, tx, int(index)), nil
 }
 
+// CHANGE(limechain):
 // marshalPreconfReceipt marshals a preconfirmation tx receipt into a JSON object.
 func (s *TransactionAPI) marshalPreconfReceipt(receipt *types.PreconfReceipt) map[string]interface{} {
 	fields := map[string]interface{}{
@@ -1826,7 +1828,7 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 		return common.Hash{}, err
 	}
 
-	// Check whether inclusion constraints are met.
+	// CHANGE(limechain): check whether inclusion constraints are met.
 	if tx.Type() == types.InclusionPreconfirmationTxType {
 		currentEpoch, currentSlot := getCurrentL1EpochAndSlot()
 
@@ -1926,6 +1928,7 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 	return tx.Hash(), nil
 }
 
+// CHANGE(limechain):
 // getCurrentL1EpochAndSlot gets current epoch and slot from storage,
 // that is being updated curl -X GET http://127.0.0.1:52027/eth/v1/node/syncing
 func getCurrentL1EpochAndSlot() (uint64, uint64) {
@@ -1937,6 +1940,7 @@ func getCurrentL1EpochAndSlot() (uint64, uint64) {
 	return epoch, slot
 }
 
+// CHANGE(limechain):
 // getAssignedL1Slots gets the assigned slots from storage.
 func getAssignedL1Slots() []uint64 {
 	// TODO(limechain): remove this mock
@@ -1977,6 +1981,7 @@ func getAssignedL1Slots() []uint64 {
 	}
 }
 
+// CHANGE(limechain):
 func assignedToProposeBlock(slot uint64, assignedSlots []uint64) bool {
 	for _, s := range assignedSlots {
 		if s == slot {
@@ -2366,10 +2371,7 @@ func checkTxFee(gasPrice *big.Int, gas uint64, cap float64) error {
 		return nil
 	}
 
-	feeEth := new(big.Float).Quo(
-		new(big.Float).SetInt(new(big.Int).Mul(gasPrice, new(big.Int).SetUint64(gas))),
-		new(big.Float).SetInt(big.NewInt(params.Ether)),
-	)
+	feeEth := new(big.Float).Quo(new(big.Float).SetInt(new(big.Int).Mul(gasPrice, new(big.Int).SetUint64(gas))), new(big.Float).SetInt(big.NewInt(params.Ether)))
 	feeFloat, _ := feeEth.Float64()
 	if feeFloat > cap {
 		return fmt.Errorf("tx fee (%.2f ether) exceeds the configured cap (%.2f ether)", feeFloat, cap)

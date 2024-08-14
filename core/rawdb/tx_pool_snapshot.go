@@ -7,6 +7,8 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
+// CHANGE(limechain): methods to read and write txs snapshot in storage.
+
 func ReadTxPoolSnapshot(db ethdb.Database) *types.TxPoolSnapshot {
 	data, _ := db.Get(txPoolSnapshotKey())
 	if len(data) == 0 {

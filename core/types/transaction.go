@@ -47,10 +47,11 @@ var (
 
 // Transaction types.
 const (
-	LegacyTxType                   = 0x00
-	AccessListTxType               = 0x01
-	DynamicFeeTxType               = 0x02
-	BlobTxType                     = 0x03
+	LegacyTxType     = 0x00
+	AccessListTxType = 0x01
+	DynamicFeeTxType = 0x02
+	BlobTxType       = 0x03
+	// CHANGE(limechain): new preconfirmation tx type
 	InclusionPreconfirmationTxType = 0x04
 )
 
@@ -88,8 +89,10 @@ type TxData interface {
 	gasFeeCap() *big.Int
 	value() *big.Int
 	nonce() uint64
-	deadline() *big.Int
 	to() *common.Address
+
+	// CHANGE(limechain): preconfirmation tx related.
+	deadline() *big.Int
 
 	// CHANGE(taiko): anchor transaction related.
 	isAnchor() bool
@@ -214,6 +217,7 @@ func (tx *Transaction) decodeTyped(b []byte) (TxData, error) {
 		inner = new(DynamicFeeTx)
 	case BlobTxType:
 		inner = new(BlobTx)
+		// CHANGE(limechain): new preconfirmation tx type
 	case InclusionPreconfirmationTxType:
 		inner = new(InclusionPreconfirmationTx)
 	default:
@@ -464,7 +468,7 @@ func (tx *Transaction) WithoutBlobTxSidecar() *Transaction {
 	return cpy
 }
 
-// Deadline returns the deadline of the transaction for inclusion preconfirmation transactions, 0 otherwise.
+// CHANGE(limechain): deadline returns the deadline of the transaction for inclusion preconfirmation transactions, 0 otherwise.
 func (tx *Transaction) Deadline() *big.Int {
 	if inclusionPreconfirmationTx, ok := tx.inner.(*InclusionPreconfirmationTx); ok {
 		return inclusionPreconfirmationTx.deadline()

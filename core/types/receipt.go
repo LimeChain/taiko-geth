@@ -204,6 +204,7 @@ func (r *Receipt) decodeTyped(b []byte) error {
 		return errShortTypedReceipt
 	}
 	switch b[0] {
+	// CHANGE(limechain): new preconfirmation tx type
 	case DynamicFeeTxType, AccessListTxType, BlobTxType, InclusionPreconfirmationTxType:
 		var data receiptRLP
 		err := rlp.DecodeBytes(b[1:], &data)
@@ -312,6 +313,7 @@ func (rs Receipts) EncodeIndex(i int, w *bytes.Buffer) {
 	}
 	w.WriteByte(r.Type)
 	switch r.Type {
+	// CHANGE(limechain): new preconfirmation tx type
 	case AccessListTxType, DynamicFeeTxType, BlobTxType, InclusionPreconfirmationTxType:
 		rlp.Encode(w, data)
 	default:

@@ -176,16 +176,14 @@ func TransactionToMessage(tx *types.Transaction, s types.Signer, baseFee *big.In
 	}
 	// If baseFee provided, set gasPrice to effectiveGasPrice.
 	if baseFee != nil {
+		// Increase the base by premium percentage, that will go into the treasury.
 		if msg.IsPreconf {
-			log.Info("TransactionToMessage: base fee", "value", baseFee)
 			// Increase the base by premium percentage, that will go into the treasury.
 			baseFee = common.IncreaseByPercentage(params.InclusionPreconfirmationFeePremium, baseFee)
-			log.Info("TransactionToMessage: adjusted base fee", "value", baseFee)
+			log.Info("Adjusted base fee for preconfirmation tx", "base fee", baseFee)
 		}
 
 		msg.GasPrice = cmath.BigMin(msg.GasPrice.Add(msg.GasTipCap, baseFee), msg.GasFeeCap)
-
-		log.Info("TransactionToMessage:", "gasPrice", msg.GasPrice, "GasTipCap", msg.GasTipCap, "GasFeeCap", msg.GasFeeCap)
 	}
 	var err error
 	msg.From, err = types.Sender(s, tx)
@@ -472,11 +470,11 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	baseFee := st.evm.Context.BaseFee
 
 	if rules.IsLondon {
+		// CHANGE(limechain): basefee is not burnt, but sent to a treasury instead.
 		if st.msg.IsPreconf && baseFee != nil {
-			log.Info("TransitionDb: base fee", "value", baseFee)
 			// Increase the base by premium percentage, that will go into the treasury.
 			baseFee = common.IncreaseByPercentage(params.InclusionPreconfirmationFeePremium, baseFee)
-			log.Info("TransitionDb: adjusted base fee", "value", baseFee)
+			log.Info("Adjusted base fee for preconfirmation tx", "base fee", baseFee)
 		}
 		effectiveTip = cmath.BigMin(msg.GasTipCap, new(big.Int).Sub(msg.GasFeeCap, baseFee))
 	}

@@ -242,42 +242,37 @@ type worker struct {
 	fullTaskHook func()                             // Method to call before pushing the full sealing task.
 	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
 
-	// Tx pool snapshot
+	// CHANGE(limechain): tx pool snapshot and caches
 	txPoolSnapshotMutex sync.RWMutex
 	pendingTxCache      map[common.Hash]bool
 	proposedTxCache     map[common.Hash]bool
 }
 
+// CHANGE(limechain):
 func (w *worker) loadPendingInCache(txPoolSnapshot *types.TxPoolSnapshot) {
 	if txPoolSnapshot == nil || (txPoolSnapshot == types.NewTxPoolSnapshot()) || w.pendingTxCache == nil {
-		log.Warn("Initialize pending tx cache")
 		w.pendingTxCache = make(map[common.Hash]bool)
 		return
 	}
 
-	log.Warn("Pending tx cache", "txs", len(w.pendingTxCache))
-
 	for _, tx := range txPoolSnapshot.PendingTxs {
-		log.Warn("Loading pending tx in cache")
 		w.pendingTxCache[tx.Hash()] = true
 	}
 }
 
+// CHANGE(limechain):
 func (w *worker) loadProposedInCache(txPoolSnapshot *types.TxPoolSnapshot) {
 	if txPoolSnapshot == nil || (txPoolSnapshot == types.NewTxPoolSnapshot()) || w.proposedTxCache == nil {
-		log.Warn("Initialize proposed tx cache")
 		w.proposedTxCache = make(map[common.Hash]bool)
 		return
 	}
 
-	log.Warn("Proposed tx cache", "txs", len(w.proposedTxCache))
-
 	for _, tx := range txPoolSnapshot.ProposedTxs {
-		log.Warn("Loading proposed tx in cache")
 		w.proposedTxCache[tx.Hash()] = true
 	}
 }
 
+// CHANGE(limechain):
 func (w *worker) UpdatePendingTxsInPoolSnapshot(txs []*types.Transaction, b []byte, env *environment) *types.TxPoolSnapshot {
 	w.txPoolSnapshotMutex.Lock()
 	defer w.txPoolSnapshotMutex.Unlock()
@@ -286,8 +281,8 @@ func (w *worker) UpdatePendingTxsInPoolSnapshot(txs []*types.Transaction, b []by
 
 	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
 	if txPoolSnapshot == nil {
-		log.Error("Empty tx pool snapshot, initialize it")
 		// Initialize the tx pool snapshot
+		log.Info("Initialize tx pool snapshot")
 		txPoolSnapshot = types.NewTxPoolSnapshot()
 	}
 
@@ -297,9 +292,6 @@ func (w *worker) UpdatePendingTxsInPoolSnapshot(txs []*types.Transaction, b []by
 		if !w.pendingTxCache[tx.Hash()] {
 			txPoolSnapshot.PendingTxs = append(txPoolSnapshot.PendingTxs, tx)
 			w.pendingTxCache[tx.Hash()] = true
-			log.Warn("Add pending tx to the snapshot")
-		} else {
-			log.Warn("Skip pending tx, already in snapshot")
 		}
 	}
 
@@ -312,6 +304,7 @@ func (w *worker) UpdatePendingTxsInPoolSnapshot(txs []*types.Transaction, b []by
 	return txPoolSnapshot
 }
 
+// CHANGE(limechain):
 func (w *worker) ProposeTxsInPoolSnapshot() *types.TxPoolSnapshot {
 	w.txPoolSnapshotMutex.Lock()
 	defer w.txPoolSnapshotMutex.Unlock()
@@ -333,7 +326,6 @@ func (w *worker) ProposeTxsInPoolSnapshot() *types.TxPoolSnapshot {
 			txPoolSnapshot.NewTxs = append(txPoolSnapshot.NewTxs, tx)
 			txPoolSnapshot.ProposedTxs = append(txPoolSnapshot.ProposedTxs, tx)
 			w.proposedTxCache[tx.Hash()] = true
-			log.Info("Add pending tx to be proposed")
 		} else {
 			log.Info("Skip pending tx, already proposed", "hash", tx.Hash())
 		}
@@ -344,6 +336,7 @@ func (w *worker) ProposeTxsInPoolSnapshot() *types.TxPoolSnapshot {
 	return txPoolSnapshot
 }
 
+// CHANGE(limechain):
 func (w *worker) ResetTxPoolSnapshot() {
 	w.txPoolSnapshotMutex.Lock()
 	defer w.txPoolSnapshotMutex.Unlock()

@@ -24,6 +24,7 @@ func (tx *BlobTx) isAnchor() bool {
 	return false
 }
 
+// CHANGE(limechain): new preconfirmation tx type
 func (tx *InclusionPreconfirmationTx) isAnchor() bool {
 	return false
 }
@@ -45,6 +46,7 @@ func (tx *BlobTx) markAsAnchor() error {
 	return ErrInvalidTxType
 }
 
+// CHANGE(limechain): new preconfirmation tx type
 func (tx *InclusionPreconfirmationTx) markAsAnchor() error {
 	return ErrInvalidTxType
 }

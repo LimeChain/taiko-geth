@@ -33,7 +33,6 @@ type txJSON struct {
 
 	ChainID              *hexutil.Big    `json:"chainId,omitempty"`
 	Nonce                *hexutil.Uint64 `json:"nonce"`
-	Deadline             *hexutil.Big    `json:"deadline,omitempty"`
 	To                   *common.Address `json:"to"`
 	Gas                  *hexutil.Uint64 `json:"gas"`
 	GasPrice             *hexutil.Big    `json:"gasPrice"`
@@ -48,6 +47,9 @@ type txJSON struct {
 	R                    *hexutil.Big    `json:"r"`
 	S                    *hexutil.Big    `json:"s"`
 	YParity              *hexutil.Uint64 `json:"yParity,omitempty"`
+
+	// CHANGE(limechain): new preconfirmation tx type
+	Deadline *hexutil.Big `json:"deadline,omitempty"`
 
 	// Blob transaction sidecar encoding:
 	Blobs       []kzg4844.Blob       `json:"blobs,omitempty"`
@@ -155,6 +157,7 @@ func (tx *Transaction) MarshalJSON() ([]byte, error) {
 			enc.Proofs = itx.Sidecar.Proofs
 		}
 
+		// CHANGE(limechain): new preconfirmation tx type
 	case *InclusionPreconfirmationTx:
 		enc.ChainID = (*hexutil.Big)(itx.ChainID)
 		enc.Nonce = (*hexutil.Uint64)(&itx.Nonce)
@@ -428,6 +431,7 @@ func (tx *Transaction) UnmarshalJSON(input []byte) error {
 			}
 		}
 
+		// CHANGE(limechain): new preconfirmation tx type
 	case InclusionPreconfirmationTxType:
 		var itx InclusionPreconfirmationTx
 		inner = &itx

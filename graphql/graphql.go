@@ -282,7 +282,7 @@ func (t *Transaction) GasPrice(ctx context.Context) hexutil.Big {
 			}
 		}
 		return hexutil.Big(*tx.GasPrice())
-		// CHANGE(limechain):
+		// CHANGE(limechain): increase the base by premium percentage, that will go into the treasury.
 	case types.InclusionPreconfirmationTxType:
 		if block != nil {
 			if baseFee, _ := block.BaseFeePerGas(ctx); baseFee != nil {
@@ -322,6 +322,7 @@ func (t *Transaction) MaxFeePerGas(ctx context.Context) *hexutil.Big {
 		return nil
 	}
 	switch tx.Type() {
+	// CHANGE(limechain): new preconfirmation tx type
 	case types.DynamicFeeTxType, types.BlobTxType, types.InclusionPreconfirmationTxType:
 		return (*hexutil.Big)(tx.GasFeeCap())
 	default:
@@ -335,6 +336,7 @@ func (t *Transaction) MaxPriorityFeePerGas(ctx context.Context) *hexutil.Big {
 		return nil
 	}
 	switch tx.Type() {
+	// CHANGE(limechain): new preconfirmation tx type
 	case types.DynamicFeeTxType, types.BlobTxType, types.InclusionPreconfirmationTxType:
 		return (*hexutil.Big)(tx.GasTipCap())
 	default:

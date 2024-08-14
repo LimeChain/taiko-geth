@@ -96,7 +96,7 @@ var (
 	// snapSyncStatusFlagKey flags that status of snap sync.
 	snapSyncStatusFlagKey = []byte("SnapSyncStatus")
 
-	// Inclusion preconfirmations
+	// CHANGE(limechain): tx snapshot/receipts storage keys.
 	txPoolSnapshotPrefixKey   = []byte("TxPoolSnapshot")
 	preconfTxReceiptPrefixKey = []byte("ptxr")
 
@@ -343,6 +343,8 @@ func IsStorageTrieNode(key []byte) bool {
 	ok, _, _ := ResolveStorageTrieNode(key)
 	return ok
 }
+
+// CHANGE(limechain):
 
 func txPoolSnapshotKey() []byte {
 	return txPoolSnapshotPrefixKey

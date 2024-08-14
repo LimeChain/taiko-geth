@@ -45,7 +45,7 @@ func (w *worker) BuildTransactionList(
 
 	// Check if tx pool is empty at first.
 	if len(w.eth.TxPool().Pending(txpool.PendingFilter{BaseFee: uint256.MustFromBig(baseFee), OnlyPlainTxs: true})) == 0 {
-		// Tx pool has been reset, reset the tx pool snapshot.
+		// CHANGE(limechain): tx pool has been reset, reset the tx pool snapshot.
 		w.ResetTxPoolSnapshot()
 		return nil
 	}
@@ -93,8 +93,8 @@ func (w *worker) BuildTransactionList(
 
 		w.commitL2Transactions(
 			env,
-			newTransactionsByPriceAndNonce(signer, locals, baseFee),
-			newTransactionsByPriceAndNonce(signer, remotes, baseFee),
+			newTransactionsByTypePriceAndNonce(signer, locals, baseFee),
+			newTransactionsByTypePriceAndNonce(signer, remotes, baseFee),
 			maxBytesPerTxList,
 		)
 
@@ -103,7 +103,7 @@ func (w *worker) BuildTransactionList(
 			return nil, err
 		}
 
-		// Keep the tx pool snapshot up to date.
+		// CHANGE(limechain): keep the tx pool snapshot up to date.
 		txPoolSnapshot := w.UpdatePendingTxsInPoolSnapshot(env.txs, b, env)
 		return txPoolSnapshot, nil
 	}
@@ -153,8 +153,6 @@ func (w *worker) sealBlockWith(
 		// `V1TaikoL2.invalidateBlock` transaction.
 		return nil, fmt.Errorf("too less transactions in the block")
 	}
-
-	log.Info("Decoded Txs", "len", len(txs), "first anchor tx hash", txs[0].Hash().String())
 
 	params := &generateParams{
 		timestamp:     timestamp,
@@ -241,8 +239,8 @@ func (w *worker) getPendingTxs(localAccounts []string, baseFee *big.Int) (
 // commitL2Transactions tries to commit the transactions into the given state.
 func (w *worker) commitL2Transactions(
 	env *environment,
-	txsLocal *transactionsByPriceAndNonce,
-	txsRemote *transactionsByPriceAndNonce,
+	txsLocal *transactionsByTypePriceAndNonce,
+	txsRemote *transactionsByTypePriceAndNonce,
 	maxBytesPerTxList uint64,
 ) {
 	var (
