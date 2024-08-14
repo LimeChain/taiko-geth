@@ -26,6 +26,8 @@ import (
 	"github.com/holiman/uint256"
 )
 
+// CHANGE(limechain): preconfirmation txs should be processed with higher priority.
+
 // txByTypePriceAndTime implements both the sort and the heap interface, making it useful
 // for all at once sorting as well as individually adding and removing elements.
 type txByTypePriceAndTime []*txWithMinerFee
@@ -34,9 +36,8 @@ func (s txByTypePriceAndTime) Len() int { return len(s) }
 func (s txByTypePriceAndTime) Less(i, j int) bool {
 	// If the prices are equal, use the time the transaction was first seen for
 	// deterministic sorting
-	// CHANGE(limechain): preconfirmation txs should be processed with higher priority.
-	if s[i].tx.Tx.Type() == types.InclusionPreconfirmationTxType && s[j].tx.Tx.Type() == types.InclusionPreconfirmationTxType ||
-		s[i].tx.Tx.Type() != types.InclusionPreconfirmationTxType && s[j].tx.Tx.Type() != types.InclusionPreconfirmationTxType {
+	if (s[i].tx.Tx.Type() == types.InclusionPreconfirmationTxType && s[j].tx.Tx.Type() == types.InclusionPreconfirmationTxType) ||
+		(s[i].tx.Tx.Type() != types.InclusionPreconfirmationTxType && s[j].tx.Tx.Type() != types.InclusionPreconfirmationTxType) {
 		cmp := s[i].fees.Cmp(s[j].fees)
 		if cmp == 0 {
 			return s[i].tx.Time.Before(s[j].tx.Time)
