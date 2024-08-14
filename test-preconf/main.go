@@ -21,6 +21,10 @@ var (
 	chainID     = big.NewInt(167001) // mainnet
 	currentSlot = big.NewInt(52625)
 
+	value = big.NewInt(1_000) // in wei (1 eth = 1_000_000_000_000_000_000)
+	gas   = uint64(21_000)
+	data  = make([]byte, 0)
+
 	accounts = []map[string]string{
 		{
 			"privateKey":  "bcdf20249abf0ed6d944c0288fad489e33f66b3960d9e6229c1cd214ed3bbe31",
@@ -48,10 +52,6 @@ var (
 			"toAddress":   "0x8943545177806ED17B9F23F0a21ee5948eCaa776",
 		},
 	}
-
-	value = big.NewInt(1_000) // in wei (1 eth = 1_000_000_000_000_000_000)
-	gas   = uint64(21_000)
-	data  = make([]byte, 0)
 )
 
 func main() {

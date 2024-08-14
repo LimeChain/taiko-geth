@@ -93,8 +93,8 @@ func (w *worker) BuildTransactionList(
 
 		w.commitL2Transactions(
 			env,
-			newTransactionsByPriceAndNonce(signer, locals, baseFee),
-			newTransactionsByPriceAndNonce(signer, remotes, baseFee),
+			newTransactionsByTypePriceAndNonce(signer, locals, baseFee),
+			newTransactionsByTypePriceAndNonce(signer, remotes, baseFee),
 			maxBytesPerTxList,
 		)
 
@@ -153,8 +153,6 @@ func (w *worker) sealBlockWith(
 		// `V1TaikoL2.invalidateBlock` transaction.
 		return nil, fmt.Errorf("too less transactions in the block")
 	}
-
-	log.Info("Decoded Txs", "len", len(txs), "first anchor tx hash", txs[0].Hash().String())
 
 	params := &generateParams{
 		timestamp:     timestamp,
@@ -241,8 +239,8 @@ func (w *worker) getPendingTxs(localAccounts []string, baseFee *big.Int) (
 // commitL2Transactions tries to commit the transactions into the given state.
 func (w *worker) commitL2Transactions(
 	env *environment,
-	txsLocal *transactionsByPriceAndNonce,
-	txsRemote *transactionsByPriceAndNonce,
+	txsLocal *transactionsByTypePriceAndNonce,
+	txsRemote *transactionsByTypePriceAndNonce,
 	maxBytesPerTxList uint64,
 ) {
 	var (
