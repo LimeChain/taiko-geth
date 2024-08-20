@@ -375,7 +375,7 @@ func (w *worker) ResetTxPoolSnapshot() {
 	log.Warn("Tx pool snapshot has been reset")
 }
 
-func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
+func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool, maxTransactionLists uint64) *worker {
 	worker := &worker{
 		config:             config,
 		chainConfig:        chainConfig,
@@ -428,7 +428,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	go worker.newWorkLoop(recommit)
 	go worker.resultLoop()
 	go worker.taskLoop()
-	go worker.txListLoop()
+	go worker.txListLoop(maxTransactionLists)
 
 	// Submit first work to initialize pending state.
 	if init {
@@ -849,14 +849,12 @@ func (w *worker) resultLoop() {
 	}
 }
 
-// txListLoop polls the tx pool and updates the tx list for the proposer service.
-func (w *worker) txListLoop() {
+// txListLoop polls new txs from the pool and updates the tx lists.
+func (w *worker) txListLoop(maxTransactionLists uint64) {
 	defer w.wg.Done()
 
-	// TODO(limechain): need better way to provide these values
-	proposerAddress := common.HexToAddress("0x8943545177806ED17B9F23F0a21ee5948eCaa776") // l1.proposerPrivKey passed as flag to the proposer service
-	localAddresses := []string{}                                                         // config
-	maxTransactionsLists := uint64(1)                                                    // Max proposed TxLists per epoch (set to 1 in the config)
+	// TODO(limechain):
+	localAddresses := []string{}
 
 	for {
 		select {
@@ -870,22 +868,20 @@ func (w *worker) txListLoop() {
 				log.Error("Tx list config not found")
 				continue
 			}
-			log.Error("Tx list config", "base fee", txListConfig.BaseFee, "block max gas limit", txListConfig.BlockMaxGasLimit, "max bytes per tx list", txListConfig.MaxBytesPerTxList)
+			log.Warn("Tx list config", "beneficiary", txListConfig.Beneficiary, "base fee", txListConfig.BaseFee, "block max gas limit", txListConfig.BlockMaxGasLimit, "max bytes per tx list", txListConfig.MaxBytesPerTxList)
 
 			epoch := rawdb.ReadCurrentL1Epoch(w.eth.BlockChain().DB())
-			log.Error("Current epoch", "value", epoch)
 			slot := rawdb.ReadCurrentL1Slot(w.eth.BlockChain().DB())
-			log.Error("Current slot", "value", slot)
 			assignedSlots := rawdb.ReadAssignedL1Slots(w.eth.BlockChain().DB())
-			log.Error("Assigned slots", "len", len(assignedSlots))
+			log.Warn("Current", "epoch", epoch, "slot", slot, "assigned slots", len(assignedSlots))
 
 			err := w.BuildTransactionList(
-				proposerAddress,
+				txListConfig.Beneficiary,
 				txListConfig.BaseFee,
 				txListConfig.BlockMaxGasLimit,
 				txListConfig.MaxBytesPerTxList,
 				localAddresses,
-				maxTransactionsLists,
+				maxTransactionLists,
 			)
 			if err != nil {
 				log.Error("Building tx list", "error", err)

@@ -177,6 +177,12 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		v := ctx.Uint64(utils.OverrideVerkle.Name)
 		cfg.Eth.OverrideVerkle = &v
 	}
+	// CHANGE(limechain): tx lists configuration options
+	if ctx.IsSet(utils.MaxProposedTxListsPerEpochFlag.Name) {
+		v := ctx.Uint64(utils.MaxProposedTxListsPerEpochFlag.Name)
+		cfg.Eth.MaxProposedTxListsPerEpoch = v
+	}
+
 	backend, eth := utils.RegisterEthService(stack, &cfg.Eth)
 
 	// CHANGE(TAIKO): register Taiko RPC APIs.

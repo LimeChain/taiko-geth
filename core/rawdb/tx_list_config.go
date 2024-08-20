@@ -3,21 +3,22 @@ package rawdb
 import (
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-// CHANGE(limechain):
+// CHANGE(limechain): tx list configuration
 
 var (
 	txListConfigKey = []byte("TxListConfig")
 )
 
-// TODO(limechain): move in types
 type TxListConfig struct {
-	BaseFee           *big.Int // calculated in the protocol contract
-	BlockMaxGasLimit  uint64   // hard-coded in the protocol contract config
+	Beneficiary       common.Address // L1 proposer address
+	BaseFee           *big.Int       // base fee calculated in the protocol contract
+	BlockMaxGasLimit  uint64         // hard-coded in the protocol contract config
 	MaxBytesPerTxList uint64
 }
 

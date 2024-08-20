@@ -7,7 +7,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/miner"
 )
 
@@ -75,34 +74,26 @@ func NewTaikoAuthAPIBackend(eth *Ethereum) *TaikoAuthAPIBackend {
 	return &TaikoAuthAPIBackend{eth}
 }
 
-// CHANGE(limechain): update epoch, slots and config params
-func (a *TaikoAuthAPIBackend) UpdateEpochAndSlots(
-	currentEpoch uint64,
+// CHANGE(limechain):
+
+// UpdateConfigAndSlots updates epoch, slots and config params.
+func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
 	currentSlot uint64,
 	currentAssignedSlots []uint64,
 	baseFee *big.Int,
 	blockMaxGasLimit uint64,
 	maxBytesPerTxList uint64,
-	beneficiary common.Address, // TODO(limechain): pass it as flag in geth
-	locals []string, // TODO(limechain): pass it as flag in geth
-	maxTransactionsLists uint64, // TODO(limechain): pass it as flag in geth
+	beneficiary common.Address,
 ) error {
-	log.Info("Update",
-		"epoch", currentEpoch,
-		"slot", currentSlot,
-		"assigned slots", len(currentAssignedSlots),
-		"base fee", baseFee,
-		"block max gas limit", blockMaxGasLimit,
-		"max bytes per tx list", maxBytesPerTxList,
-		"beneficiary", beneficiary,
-		"locals", locals,
-		"max tx lists", maxTransactionsLists,
-	)
-	rawdb.WriteCurrentL1Epoch(a.eth.ChainDb(), currentEpoch)
-	rawdb.WriteCurrentL1Slot(a.eth.ChainDb(), currentSlot)
-	rawdb.WriteAssignedL1Slots(a.eth.ChainDb(), currentAssignedSlots)
+	offset := currentSlot % 32
+	firstEpochSlot := currentSlot - offset
+	currentEpoch := firstEpochSlot / 32
 
+	rawdb.WriteCurrentL1Slot(a.eth.ChainDb(), currentSlot)
+	rawdb.WriteCurrentL1Epoch(a.eth.ChainDb(), currentEpoch)
+	rawdb.WriteAssignedL1Slots(a.eth.ChainDb(), currentAssignedSlots)
 	rawdb.WriteTxListConfig(a.eth.ChainDb(), &rawdb.TxListConfig{
+		Beneficiary:       beneficiary,
 		BaseFee:           baseFee,
 		BlockMaxGasLimit:  blockMaxGasLimit,
 		MaxBytesPerTxList: maxBytesPerTxList,

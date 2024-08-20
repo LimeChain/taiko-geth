@@ -37,6 +37,8 @@ const (
 	MiscCategory       = "MISC"
 	TestingCategory    = "TESTING"
 	DeprecatedCategory = "ALIASED (deprecated)"
+	// CHANGE(limechain):
+	TxListsCategory = "TRANSACTION LISTS"
 )
 
 func init() {

@@ -81,7 +81,8 @@ type Miner struct {
 	wg sync.WaitGroup
 }
 
-func New(eth Backend, config *Config, chainConfig *params.ChainConfig, mux *event.TypeMux, engine consensus.Engine, isLocalBlock func(header *types.Header) bool) *Miner {
+// CHANGE(limechain): tx lists configuration options
+func New(eth Backend, config *Config, chainConfig *params.ChainConfig, mux *event.TypeMux, engine consensus.Engine, isLocalBlock func(header *types.Header) bool, maxTransactionLists uint64) *Miner {
 	miner := &Miner{
 		mux:     mux,
 		eth:     eth,
@@ -89,7 +90,7 @@ func New(eth Backend, config *Config, chainConfig *params.ChainConfig, mux *even
 		exitCh:  make(chan struct{}),
 		startCh: make(chan struct{}),
 		stopCh:  make(chan struct{}),
-		worker:  newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, true),
+		worker:  newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, true, maxTransactionLists),
 	}
 	miner.wg.Add(1)
 	go miner.update()
