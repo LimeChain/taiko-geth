@@ -15,6 +15,14 @@ const anchorTxIndexOffset = 1
 // CHANGE(limechain): preconfirmation receipts are stored under tx hash
 // to allow for retrieval without canonical block data.
 
+var (
+	preconfTxReceiptPrefixKey = []byte("ptxr")
+)
+
+func preconfTxReceiptKey(txHash []byte) []byte {
+	return append(preconfTxReceiptPrefixKey, txHash...)
+}
+
 func ReadPreconfReceipt(db ethdb.Database, txHash common.Hash) *types.PreconfReceipt {
 	data, _ := db.Get(preconfTxReceiptKey(txHash.Bytes()))
 	if len(data) == 0 {

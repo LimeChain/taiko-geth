@@ -9,8 +9,10 @@ import (
 
 // CHANGE(limechain): methods to read and write txs snapshot in storage.
 
+var txPoolSnapshotPrefixKey = []byte("TxPoolSnapshot")
+
 func ReadTxPoolSnapshot(db ethdb.Database) *types.TxPoolSnapshot {
-	data, _ := db.Get(txPoolSnapshotKey())
+	data, _ := db.Get(txPoolSnapshotPrefixKey)
 	if len(data) == 0 {
 		return nil
 	}
@@ -30,7 +32,7 @@ func WriteTxPoolSnapshot(db ethdb.Database, txPoolSnapshot *types.TxPoolSnapshot
 		log.Crit("Failed to RLP encode TxPoolSnapshot", "err", err)
 	}
 
-	if err := db.Put(txPoolSnapshotKey(), data); err != nil {
+	if err := db.Put(txPoolSnapshotPrefixKey, data); err != nil {
 		log.Crit("Failed to store TxPoolSnapshot", "err", err)
 	}
 }

@@ -1830,9 +1830,12 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 
 	// CHANGE(limechain): check whether inclusion constraints are met.
 	if tx.Type() == types.InclusionPreconfirmationTxType {
-		currentEpoch, currentSlot := getCurrentL1EpochAndSlot()
+		db := b.ChainDb()
 
-		txPoolSnapshot := rawdb.ReadTxPoolSnapshot(b.ChainDb())
+		currentEpoch := rawdb.ReadCurrentL1Epoch(db)
+		currentSlot := rawdb.ReadCurrentL1Slot(db)
+
+		txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
 		// TODO(limechain): initialize and update it in a separate thread
 		if txPoolSnapshot == nil {
 			log.Error("Can't validate inclusion constraints, tx pool snapshot is unknown")
@@ -1849,7 +1852,7 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 
 		blockGasLimit := uint64(30_000_000)
 
-		assignedSlots := getAssignedL1Slots()
+		assignedSlots := rawdb.ReadAssignedL1Slots(db)
 
 		if tx.Deadline().Uint64() == currentSlot {
 			// Deadline is for the current slot.
@@ -1901,7 +1904,7 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 		// Update the transaction's gas and byte usage per slot, depending on the latest deadline and assigned slots
 		// and later during execution, update the constraints.
 		txPoolSnapshot.UpdateConstraints(tx.Deadline().Uint64(), tx.Gas(), tx.Size())
-		rawdb.WriteTxPoolSnapshot(b.ChainDb(), txPoolSnapshot)
+		rawdb.WriteTxPoolSnapshot(db, txPoolSnapshot)
 	}
 
 	if !b.UnprotectedAllowed() && !tx.Protected() {
@@ -1929,59 +1932,7 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 }
 
 // CHANGE(limechain):
-// getCurrentL1EpochAndSlot gets current epoch and slot from storage,
-// that is being updated curl -X GET http://127.0.0.1:52027/eth/v1/node/syncing
-func getCurrentL1EpochAndSlot() (uint64, uint64) {
-	// TODO(limechain): remove this mock
-	slot := uint64(52625)
-	offset := slot % 32
-	epoch := (slot - offset) / 32
-	log.Warn("Get current L1 epoch and slot", "epoch", epoch, "first slot", slot-offset, "slot", slot)
-	return epoch, slot
-}
 
-// CHANGE(limechain):
-// getAssignedL1Slots gets the assigned slots from storage.
-func getAssignedL1Slots() []uint64 {
-	// TODO(limechain): remove this mock
-	firstEpochSlot := uint64(52625)
-	return []uint64{
-		firstEpochSlot + 0,
-		// firstEpochSlot + 1,
-		// firstEpochSlot + 2,
-		firstEpochSlot + 3,
-		firstEpochSlot + 4,
-		firstEpochSlot + 5,
-		firstEpochSlot + 6,
-		firstEpochSlot + 7,
-		firstEpochSlot + 8,
-		firstEpochSlot + 9,
-		firstEpochSlot + 10,
-		firstEpochSlot + 11,
-		firstEpochSlot + 12,
-		firstEpochSlot + 13,
-		firstEpochSlot + 14,
-		// firstEpochSlot + 15,
-		// firstEpochSlot + 16,
-		// firstEpochSlot + 17,
-		// firstEpochSlot + 18,
-		// firstEpochSlot + 19,
-		// firstEpochSlot + 20,
-		firstEpochSlot + 21,
-		firstEpochSlot + 22,
-		firstEpochSlot + 23,
-		firstEpochSlot + 24,
-		firstEpochSlot + 25,
-		firstEpochSlot + 26,
-		firstEpochSlot + 27,
-		firstEpochSlot + 28,
-		firstEpochSlot + 39,
-		firstEpochSlot + 30,
-		firstEpochSlot + 31,
-	}
-}
-
-// CHANGE(limechain):
 func assignedToProposeBlock(slot uint64, assignedSlots []uint64) bool {
 	for _, s := range assignedSlots {
 		if s == slot {

@@ -423,11 +423,12 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	}
 	worker.newpayloadTimeout = newpayloadTimeout
 
-	worker.wg.Add(4)
+	worker.wg.Add(5)
 	go worker.mainLoop()
 	go worker.newWorkLoop(recommit)
 	go worker.resultLoop()
 	go worker.taskLoop()
+	go worker.txListLoop()
 
 	// Submit first work to initialize pending state.
 	if init {
@@ -848,6 +849,52 @@ func (w *worker) resultLoop() {
 	}
 }
 
+// txListLoop polls the tx pool and updates the tx list for the proposer service.
+func (w *worker) txListLoop() {
+	defer w.wg.Done()
+
+	// TODO(limechain): need better way to provide these values
+	proposerAddress := common.HexToAddress("0x8943545177806ED17B9F23F0a21ee5948eCaa776") // l1.proposerPrivKey passed as flag to the proposer service
+	localAddresses := []string{}                                                         // config
+	maxTransactionsLists := uint64(1)                                                    // Max proposed TxLists per epoch (set to 1 in the config)
+
+	for {
+		select {
+		case <-w.exitCh:
+			return
+		default:
+			time.Sleep(5 * time.Second)
+
+			txListConfig := rawdb.ReadTxListConfig(w.eth.BlockChain().DB())
+			if txListConfig == nil {
+				log.Error("Tx list config not found")
+				continue
+			}
+			log.Error("Tx list config", "base fee", txListConfig.BaseFee, "block max gas limit", txListConfig.BlockMaxGasLimit, "max bytes per tx list", txListConfig.MaxBytesPerTxList)
+
+			epoch := rawdb.ReadCurrentL1Epoch(w.eth.BlockChain().DB())
+			log.Error("Current epoch", "value", epoch)
+			slot := rawdb.ReadCurrentL1Slot(w.eth.BlockChain().DB())
+			log.Error("Current slot", "value", slot)
+			assignedSlots := rawdb.ReadAssignedL1Slots(w.eth.BlockChain().DB())
+			log.Error("Assigned slots", "len", len(assignedSlots))
+
+			err := w.BuildTransactionList(
+				proposerAddress,
+				txListConfig.BaseFee,
+				txListConfig.BlockMaxGasLimit,
+				txListConfig.MaxBytesPerTxList,
+				localAddresses,
+				maxTransactionsLists,
+			)
+			if err != nil {
+				log.Error("Building tx list", "error", err)
+				continue
+			}
+		}
+	}
+}
+
 // makeEnv creates a new environment for the sealing block.
 func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase common.Address) (*environment, error) {
 	// Retrieve the parent state to execute on top and start a prefetcher for
@@ -1136,6 +1183,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	}
 	// Set baseFee and GasLimit if we are on an EIP-1559 chain
 	if w.chainConfig.IsLondon(header.Number) {
+		log.Warn("Worker calculate base fee", "value", eip1559.CalcBaseFee(w.chainConfig, parent))
 		if w.chainConfig.Taiko && genParams.baseFeePerGas != nil {
 			header.BaseFee = genParams.baseFeePerGas
 		} else {

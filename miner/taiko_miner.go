@@ -27,25 +27,6 @@ func (miner *Miner) SealBlockWith(
 	return miner.worker.sealBlockWith(parent, timestamp, blkMeta, baseFeePerGas, withdrawals)
 }
 
-// BuildTransactionList initiates the process of building tx lists that later can be fetched.
-func (miner *Miner) BuildTransactionList(
-	beneficiary common.Address,
-	baseFee *big.Int,
-	blockMaxGasLimit uint64,
-	maxBytesPerTxList uint64,
-	locals []string,
-	maxTransactionsLists uint64,
-) error {
-	return miner.worker.BuildTransactionList(
-		beneficiary,
-		baseFee,
-		blockMaxGasLimit,
-		maxBytesPerTxList,
-		locals,
-		maxTransactionsLists,
-	)
-}
-
 // FetchTransactionList retrieves already pre-built list of txs.
 func (miner *Miner) FetchTransactionList() ([]*PreBuiltTxList, error) {
 	txPoolSnapshot := miner.worker.ProposeTxsInPoolSnapshot()

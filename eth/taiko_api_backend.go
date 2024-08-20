@@ -7,6 +7,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/miner"
 )
 
@@ -74,24 +75,40 @@ func NewTaikoAuthAPIBackend(eth *Ethereum) *TaikoAuthAPIBackend {
 	return &TaikoAuthAPIBackend{eth}
 }
 
-// BuildTxList initiates the process of building tx lists.
-func (a *TaikoAuthAPIBackend) BuildTxList(
-	beneficiary common.Address,
+// CHANGE(limechain): update epoch, slots and config params
+func (a *TaikoAuthAPIBackend) UpdateEpochAndSlots(
+	currentEpoch uint64,
+	currentSlot uint64,
+	currentAssignedSlots []uint64,
 	baseFee *big.Int,
 	blockMaxGasLimit uint64,
 	maxBytesPerTxList uint64,
-	locals []string,
-	maxTransactionsLists uint64,
+	beneficiary common.Address, // TODO(limechain): pass it as flag in geth
+	locals []string, // TODO(limechain): pass it as flag in geth
+	maxTransactionsLists uint64, // TODO(limechain): pass it as flag in geth
 ) error {
-	err := a.eth.Miner().BuildTransactionList(
-		beneficiary,
-		baseFee,
-		blockMaxGasLimit,
-		maxBytesPerTxList,
-		locals,
-		maxTransactionsLists,
+	log.Info("Update",
+		"epoch", currentEpoch,
+		"slot", currentSlot,
+		"assigned slots", len(currentAssignedSlots),
+		"base fee", baseFee,
+		"block max gas limit", blockMaxGasLimit,
+		"max bytes per tx list", maxBytesPerTxList,
+		"beneficiary", beneficiary,
+		"locals", locals,
+		"max tx lists", maxTransactionsLists,
 	)
-	return err
+	rawdb.WriteCurrentL1Epoch(a.eth.ChainDb(), currentEpoch)
+	rawdb.WriteCurrentL1Slot(a.eth.ChainDb(), currentSlot)
+	rawdb.WriteAssignedL1Slots(a.eth.ChainDb(), currentAssignedSlots)
+
+	rawdb.WriteTxListConfig(a.eth.ChainDb(), &rawdb.TxListConfig{
+		BaseFee:           baseFee,
+		BlockMaxGasLimit:  blockMaxGasLimit,
+		MaxBytesPerTxList: maxBytesPerTxList,
+	})
+
+	return nil
 }
 
 // FetchTxList retrieves already pre-built list of txs.

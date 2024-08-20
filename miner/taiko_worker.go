@@ -36,7 +36,14 @@ func (w *worker) BuildTransactionList(
 	localAccounts []string,
 	maxTransactionsLists uint64,
 ) error {
-	log.Info("Start building tx list", "baseFee", baseFee, "blockMaxGasLimit", blockMaxGasLimit, "maxBytesPerTxList", maxBytesPerTxList, "localAccounts", localAccounts, "maxTransactionsLists", maxTransactionsLists)
+	log.Info("Start building tx list",
+		"beneficiary", beneficiary,
+		"baseFee", baseFee,
+		"blockMaxGasLimit", blockMaxGasLimit,
+		"maxBytesPerTxList", maxBytesPerTxList,
+		"localAccounts", localAccounts,
+		"maxTransactionsLists", maxTransactionsLists,
+	)
 
 	currentHead := w.chain.CurrentBlock()
 	if currentHead == nil {
