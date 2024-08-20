@@ -1834,15 +1834,16 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 
 		currentEpoch := rawdb.ReadCurrentL1Epoch(db)
 		currentSlot := rawdb.ReadCurrentL1Slot(db)
+		if currentEpoch == 0 || currentSlot == 0 {
+			log.Error("Can't validate inclusion constraints, current epoch or slot is unknown")
+			return common.Hash{}, nil
+		}
 
 		txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
-		// TODO(limechain): initialize and update it in a separate thread
 		if txPoolSnapshot == nil {
 			log.Error("Can't validate inclusion constraints, tx pool snapshot is unknown")
 			return common.Hash{}, nil
 		}
-		// TODO(limechain): Move this to the place where current epoch and slot are being updated.
-		txPoolSnapshot.ResetPastConstraints(currentSlot)
 
 		// The deadline is for a past slot.
 		if tx.Deadline().Uint64() < currentSlot {
@@ -1850,7 +1851,11 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 			return common.Hash{}, nil
 		}
 
-		blockGasLimit := uint64(30_000_000)
+		txListConfig := rawdb.ReadTxListConfig(db)
+		if txListConfig == nil {
+			log.Error("Can't validate inclusion constraints, tx list config is unknown")
+			return common.Hash{}, nil
+		}
 
 		assignedSlots := rawdb.ReadAssignedL1Slots(db)
 
@@ -1858,7 +1863,7 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 			// Deadline is for the current slot.
 			if assignedToProposeBlock(currentSlot, assignedSlots) {
 				// Check whether the block space constraints are met (gas and byte estimates from the snapshot).
-				if txPoolSnapshot.EstimatedGasUsed+tx.Gas() > blockGasLimit {
+				if txPoolSnapshot.EstimatedGasUsed+tx.Gas() > txListConfig.BlockMaxGasLimit {
 					log.Error("Inclusion rejected, gas limit reached", "hash", tx.Hash(), "deadline", tx.Deadline(), "current slot", currentSlot)
 					return common.Hash{}, nil
 				}
@@ -1897,7 +1902,7 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 			log.Error("Can't validate inclusion constraints, slot constraints are unknown", "slot", tx.Deadline().Uint64())
 			return common.Hash{}, nil
 		}
-		if blockConstraints.EstimatedGasUsed+tx.Gas() > blockGasLimit {
+		if blockConstraints.EstimatedGasUsed+tx.Gas() > txListConfig.BlockMaxGasLimit {
 			log.Error("Inclusion rejected, gas limit reached", "hash", tx.Hash(), "deadline", tx.Deadline(), "current slot", currentSlot)
 			return common.Hash{}, nil
 		}

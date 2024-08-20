@@ -868,12 +868,12 @@ func (w *worker) txListLoop(maxTransactionLists uint64) {
 				log.Error("Tx list config not found")
 				continue
 			}
-			log.Warn("Tx list config", "beneficiary", txListConfig.Beneficiary, "base fee", txListConfig.BaseFee, "block max gas limit", txListConfig.BlockMaxGasLimit, "max bytes per tx list", txListConfig.MaxBytesPerTxList)
+			log.Warn("Fetch tx list config", "beneficiary", txListConfig.Beneficiary, "base fee", txListConfig.BaseFee, "block max gas limit", txListConfig.BlockMaxGasLimit, "max bytes per tx list", txListConfig.MaxBytesPerTxList)
 
 			epoch := rawdb.ReadCurrentL1Epoch(w.eth.BlockChain().DB())
 			slot := rawdb.ReadCurrentL1Slot(w.eth.BlockChain().DB())
 			assignedSlots := rawdb.ReadAssignedL1Slots(w.eth.BlockChain().DB())
-			log.Warn("Current", "epoch", epoch, "slot", slot, "assigned slots", len(assignedSlots))
+			log.Warn("Fetch current L1", "epoch", epoch, "slot", slot, "assigned slots", len(assignedSlots))
 
 			err := w.BuildTransactionList(
 				txListConfig.Beneficiary,
