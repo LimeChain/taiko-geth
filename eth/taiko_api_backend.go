@@ -84,6 +84,8 @@ func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
 	blockMaxGasLimit uint64,
 	maxBytesPerTxList uint64,
 	beneficiary common.Address,
+	locals []string,
+	maxTransactionsLists uint64,
 ) error {
 	offset := currentSlot % 32
 	firstEpochSlot := currentSlot - offset
@@ -92,10 +94,12 @@ func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
 	db := a.eth.ChainDb()
 
 	rawdb.WriteTxListConfig(db, &rawdb.TxListConfig{
-		Beneficiary:       beneficiary,
-		BaseFee:           baseFee,
-		BlockMaxGasLimit:  blockMaxGasLimit,
-		MaxBytesPerTxList: maxBytesPerTxList,
+		Beneficiary:          beneficiary,
+		BaseFee:              baseFee,
+		BlockMaxGasLimit:     blockMaxGasLimit,
+		MaxBytesPerTxList:    maxBytesPerTxList,
+		Locals:               locals,
+		MaxTransactionsLists: maxTransactionsLists,
 	})
 
 	rawdb.WriteCurrentL1Slot(db, currentSlot)

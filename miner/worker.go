@@ -375,7 +375,7 @@ func (w *worker) ResetTxPoolSnapshot() {
 	log.Warn("Tx pool snapshot has been reset")
 }
 
-func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool, maxTransactionLists uint64) *worker {
+func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
 	worker := &worker{
 		config:             config,
 		chainConfig:        chainConfig,
@@ -428,7 +428,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	go worker.newWorkLoop(recommit)
 	go worker.resultLoop()
 	go worker.taskLoop()
-	go worker.txListLoop(maxTransactionLists)
+	go worker.txListLoop()
 
 	// Submit first work to initialize pending state.
 	if init {
@@ -850,11 +850,8 @@ func (w *worker) resultLoop() {
 }
 
 // txListLoop polls new txs from the pool and updates the tx lists.
-func (w *worker) txListLoop(maxTransactionLists uint64) {
+func (w *worker) txListLoop() {
 	defer w.wg.Done()
-
-	// TODO(limechain):
-	localAddresses := []string{}
 
 	for {
 		select {
@@ -880,8 +877,8 @@ func (w *worker) txListLoop(maxTransactionLists uint64) {
 				txListConfig.BaseFee,
 				txListConfig.BlockMaxGasLimit,
 				txListConfig.MaxBytesPerTxList,
-				localAddresses,
-				maxTransactionLists,
+				txListConfig.Locals,
+				txListConfig.MaxTransactionsLists,
 			)
 			if err != nil {
 				log.Error("Building tx list", "error", err)

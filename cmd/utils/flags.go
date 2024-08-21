@@ -281,24 +281,6 @@ var (
 		Value:    ethconfig.Defaults.TransactionHistory,
 		Category: flags.StateCategory,
 	}
-	// CHANGE(limechain):
-	// Transaction list settings
-	// TxPoolLocals = &cli.StringSliceFlag{
-	// 	Name:     "txPool.locals",
-	// 	Usage:    "Comma separated accounts to treat as locals (priority inclusion)",
-	// 	Category: flags.TxListsCategory,
-	// }
-	// TxPoolLocalsOnly = &cli.BoolFlag{
-	// 	Name:     "txPool.localsOnly",
-	// 	Usage:    "If set to true, proposer will only propose transactions of local accounts",
-	// 	Value:    false,
-	// 	Category: flags.TxListsCategory,
-	// }
-	MaxProposedTxListsPerEpochFlag = &cli.Uint64Flag{
-		Name:     "preconf.maxtxlists",
-		Usage:    "Maximum number of transaction lists which will be proposed inside one proposing epoch",
-		Category: flags.TxListsCategory,
-	}
 	// Transaction pool settings
 	TxPoolLocalsFlag = &cli.StringFlag{
 		Name:     "txpool.locals",

@@ -148,8 +148,6 @@ var (
 		configFileFlag,
 		utils.LogDebugFlag,
 		utils.LogBacktraceAtFlag,
-		// CHANGE(limechain): tx lists configuration flags
-		utils.MaxProposedTxListsPerEpochFlag,
 	}, utils.NetworkFlags, utils.DatabaseFlags)
 
 	rpcFlags = []cli.Flag{

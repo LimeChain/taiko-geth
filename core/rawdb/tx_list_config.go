@@ -16,10 +16,12 @@ var (
 )
 
 type TxListConfig struct {
-	Beneficiary       common.Address // L1 proposer address
-	BaseFee           *big.Int       // base fee calculated in the protocol contract
-	BlockMaxGasLimit  uint64         // hard-coded in the protocol contract config
-	MaxBytesPerTxList uint64
+	Beneficiary          common.Address // L1 proposer address
+	BaseFee              *big.Int       // base fee calculated in the protocol contract
+	BlockMaxGasLimit     uint64         // hard-coded in the protocol contract config
+	MaxBytesPerTxList    uint64
+	MaxTransactionsLists uint64
+	Locals               []string // TODO(limechain): []common.Address
 }
 
 func ReadTxListConfig(db ethdb.Database) *TxListConfig {
