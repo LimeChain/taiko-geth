@@ -102,6 +102,13 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	if tx.GasFeeCapIntCmp(tx.GasTipCap()) < 0 {
 		return core.ErrTipAboveFeeCap
 	}
+	// CHANGE(limechain):
+	if tx.Type() == types.InclusionPreconfirmationTxType {
+		_, err := tx.EffectiveGasTip(head.BaseFee)
+		if err != nil {
+			return err
+		}
+	}
 	// CHANGE(taiko): check gasFeeCap.
 	if os.Getenv("TAIKO_TEST") == "" && tx.GasFeeCap().Cmp(common.Big0) == 0 {
 		return errors.New("max fee per gas is 0")
