@@ -42,6 +42,7 @@ func NewTxPoolSnapshot() *TxPoolSnapshot {
 	}
 }
 
+// GetConstraints returns constraints for a given slot.
 func (s *TxPoolSnapshot) GetConstraints(slot uint64) (*BlockConstraints, error) {
 	index := slot % 32
 	constraints := s.PerSlotConstraints[index]
@@ -51,6 +52,7 @@ func (s *TxPoolSnapshot) GetConstraints(slot uint64) (*BlockConstraints, error) 
 	return constraints, nil
 }
 
+// UpdateConstraints updates the constraints for a given slot.
 func (s *TxPoolSnapshot) UpdateConstraints(slot uint64, gasUsed uint64, bytesLength uint64) error {
 	index := slot % 32
 	constraints := s.PerSlotConstraints[index]
@@ -62,10 +64,9 @@ func (s *TxPoolSnapshot) UpdateConstraints(slot uint64, gasUsed uint64, bytesLen
 	return nil
 }
 
+// ResetPastConstraints resets past constraints based on the current slot.
 func (s *TxPoolSnapshot) ResetPastConstraints(currentSlot uint64) error {
 	index := currentSlot % 32
-	// TODO(limechain): Once we have a place where the current slot is being updated,
-	// reset only the slot prior to the current one.
 	for i := index - 1; i > 0; i-- {
 		s.PerSlotConstraints[i] = &BlockConstraints{}
 	}

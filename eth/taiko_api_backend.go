@@ -108,7 +108,10 @@ func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
 
 	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
 	if txPoolSnapshot != nil {
-		txPoolSnapshot.ResetPastConstraints(currentSlot)
+		err := txPoolSnapshot.ResetPastConstraints(currentSlot)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
