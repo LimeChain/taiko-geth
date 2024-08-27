@@ -1865,11 +1865,8 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 func validateInclusionConstraints(b Backend, tx *types.Transaction) error {
 	db := b.ChainDb()
 
-	currentEpoch := rawdb.ReadCurrentL1Epoch(db)
-	currentSlot := rawdb.ReadCurrentL1Slot(db)
-	if currentEpoch == 0 || currentSlot == 0 {
-		return errors.New("can't validate inclusion constraints, current epoch or slot is unknown")
-	}
+	now := time.Now().Unix()
+	currentSlot, currentEpoch := common.CurrentSlotAndEpoch(now)
 
 	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
 	if txPoolSnapshot == nil {

@@ -130,14 +130,18 @@ func (w *worker) BuildTransactionList(
 	// available in the current slot, pull and process transactions with later deadlines
 	// in the current slot, and update the per-slot constraints.
 
-	// TODO(limechain): remove, just for debugging purposes
 	db := w.eth.BlockChain().DB()
 	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
 	if txPoolSnapshot != nil {
+		currentSlot, _ := common.CurrentSlotAndEpoch(time.Now().Unix())
+		txPoolSnapshot.ResetPastConstraints(currentSlot)
+
+		// TODO(limechain): remove, just for debugging purposes
 		log.Warn("Tx list pending", "count", len(txPoolSnapshot.PendingTxs), "txs", txPoolSnapshot.PendingTxs)
 		log.Warn("Tx list proposed", "count", len(txPoolSnapshot.ProposedTxs), "txs", txPoolSnapshot.ProposedTxs)
 		log.Warn("Tx list new", "count", len(txPoolSnapshot.NewTxs), "txs", txPoolSnapshot.NewTxs)
 	}
+
 	return nil
 }
 

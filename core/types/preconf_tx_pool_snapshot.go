@@ -2,6 +2,8 @@ package types
 
 import (
 	"fmt"
+
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // CHANGE(limechain): keep track of the current txs and block constraints per slot.
@@ -30,12 +32,10 @@ type TxPoolSnapshot struct {
 
 func NewTxPoolSnapshot() *TxPoolSnapshot {
 	return &TxPoolSnapshot{
-		PendingTxs:  Transactions{},
-		ProposedTxs: Transactions{},
-		NewTxs:      Transactions{},
-
+		PendingTxs:       Transactions{},
+		ProposedTxs:      Transactions{},
+		NewTxs:           Transactions{},
 		BlockConstraints: BlockConstraints{},
-
 		PerSlotConstraints: [32]*BlockConstraints{
 			{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},
 		},
@@ -64,11 +64,11 @@ func (s *TxPoolSnapshot) UpdateConstraints(slot uint64, gasUsed uint64, bytesLen
 	return nil
 }
 
-// ResetPastConstraints resets past constraints based on the current slot.
-func (s *TxPoolSnapshot) ResetPastConstraints(currentSlot uint64) error {
-	index := currentSlot % 32
-	for i := index - 1; i > 0; i-- {
-		s.PerSlotConstraints[i] = &BlockConstraints{}
+// ResetPastConstraints resets past constraints prior to the current slot.
+func (s *TxPoolSnapshot) ResetPastConstraints(currentSlot uint64) {
+	for i := uint64(0); i < currentSlot; i++ {
+		index := i % 32
+		s.PerSlotConstraints[index] = &BlockConstraints{}
 	}
-	return nil
+	log.Info("Past slot constraints were reset")
 }

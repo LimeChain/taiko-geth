@@ -867,11 +867,6 @@ func (w *worker) txListLoop() {
 			}
 			log.Warn("Fetch tx list config", "beneficiary", txListConfig.Beneficiary, "base fee", txListConfig.BaseFee, "block max gas limit", txListConfig.BlockMaxGasLimit, "max bytes per tx list", txListConfig.MaxBytesPerTxList)
 
-			epoch := rawdb.ReadCurrentL1Epoch(w.eth.BlockChain().DB())
-			slot := rawdb.ReadCurrentL1Slot(w.eth.BlockChain().DB())
-			assignedSlots := rawdb.ReadAssignedL1Slots(w.eth.BlockChain().DB())
-			log.Warn("Fetch current L1", "epoch", epoch, "slot", slot, "assigned slots", len(assignedSlots))
-
 			err := w.BuildTransactionList(
 				txListConfig.Beneficiary,
 				txListConfig.BaseFee,
@@ -1176,7 +1171,6 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	}
 	// Set baseFee and GasLimit if we are on an EIP-1559 chain
 	if w.chainConfig.IsLondon(header.Number) {
-		log.Warn("Worker calculate base fee", "value", eip1559.CalcBaseFee(w.chainConfig, parent))
 		if w.chainConfig.Taiko && genParams.baseFeePerGas != nil {
 			header.BaseFee = genParams.baseFeePerGas
 		} else {

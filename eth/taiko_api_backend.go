@@ -76,10 +76,9 @@ func NewTaikoAuthAPIBackend(eth *Ethereum) *TaikoAuthAPIBackend {
 
 // CHANGE(limechain):
 
-// UpdateConfigAndSlots updates slots and config params at the beginning of a new slot.
+// UpdateConfigAndSlots updates slots and config params at the beginning of a new epoch.
 func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
-	currentSlot uint64,
-	currentAssignedSlots []uint64,
+	currentEpochAssignedSlots []uint64,
 	baseFee *big.Int,
 	blockMaxGasLimit uint64,
 	maxBytesPerTxList uint64,
@@ -87,10 +86,6 @@ func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
 	locals []string,
 	maxTransactionsLists uint64,
 ) error {
-	offset := currentSlot % 32
-	firstEpochSlot := currentSlot - offset
-	currentEpoch := firstEpochSlot / 32
-
 	db := a.eth.ChainDb()
 
 	rawdb.WriteTxListConfig(db, &rawdb.TxListConfig{
@@ -101,19 +96,7 @@ func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
 		Locals:               locals,
 		MaxTransactionsLists: maxTransactionsLists,
 	})
-
-	rawdb.WriteCurrentL1Slot(db, currentSlot)
-	rawdb.WriteCurrentL1Epoch(db, currentEpoch)
-	rawdb.WriteAssignedL1Slots(db, currentAssignedSlots)
-
-	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
-	if txPoolSnapshot != nil {
-		err := txPoolSnapshot.ResetPastConstraints(currentSlot)
-		if err != nil {
-			return err
-		}
-	}
-
+	rawdb.WriteAssignedL1Slots(db, currentEpochAssignedSlots)
 	return nil
 }
 
