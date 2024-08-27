@@ -1,6 +1,7 @@
 package miner
 
 import (
+	"errors"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/beacon/engine"
@@ -27,14 +28,22 @@ func (miner *Miner) SealBlockWith(
 	return miner.worker.sealBlockWith(parent, timestamp, blkMeta, baseFeePerGas, withdrawals)
 }
 
+// CHANGE(limechain):
+
 // FetchTransactionList retrieves already pre-built list of txs.
 func (miner *Miner) FetchTransactionList() ([]*PreBuiltTxList, error) {
-	txPoolSnapshot := miner.worker.ProposeTxsInPoolSnapshot()
+	txPoolSnapshot, perSlotConstraints := miner.worker.ProposeTxsInPoolSnapshot()
+
+	if txPoolSnapshot == nil || perSlotConstraints == nil {
+		return nil, errors.New("failed to fetch txs to propose")
+	}
+
 	// TODO(limechain): refactor, no need to return multiple lists
 	txList := &PreBuiltTxList{
 		TxList:           txPoolSnapshot.NewTxs,
-		EstimatedGasUsed: txPoolSnapshot.EstimatedGasUsed,
-		BytesLength:      txPoolSnapshot.BytesLength,
+		EstimatedGasUsed: perSlotConstraints.Total.EstimatedGasUsed,
+		BytesLength:      perSlotConstraints.Total.BytesLength,
 	}
+
 	return []*PreBuiltTxList{txList}, nil
 }

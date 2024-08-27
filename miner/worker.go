@@ -250,7 +250,7 @@ type worker struct {
 
 // CHANGE(limechain):
 func (w *worker) loadPendingInCache(txPoolSnapshot *types.TxPoolSnapshot) {
-	if txPoolSnapshot == nil || (txPoolSnapshot == types.NewTxPoolSnapshot()) || w.pendingTxCache == nil {
+	if txPoolSnapshot == nil || (txPoolSnapshot == &types.TxPoolSnapshot{}) || w.pendingTxCache == nil {
 		w.pendingTxCache = make(map[common.Hash]bool)
 		return
 	}
@@ -262,7 +262,7 @@ func (w *worker) loadPendingInCache(txPoolSnapshot *types.TxPoolSnapshot) {
 
 // CHANGE(limechain):
 func (w *worker) loadProposedInCache(txPoolSnapshot *types.TxPoolSnapshot) {
-	if txPoolSnapshot == nil || (txPoolSnapshot == types.NewTxPoolSnapshot()) || w.proposedTxCache == nil {
+	if txPoolSnapshot == nil || (txPoolSnapshot == &types.TxPoolSnapshot{}) || w.proposedTxCache == nil {
 		w.proposedTxCache = make(map[common.Hash]bool)
 		return
 	}
@@ -283,7 +283,7 @@ func (w *worker) UpdatePendingTxsInPoolSnapshot(txs []*types.Transaction, b []by
 	if txPoolSnapshot == nil {
 		// Initialize the tx pool snapshot
 		log.Info("Initialize tx pool snapshot")
-		txPoolSnapshot = types.NewTxPoolSnapshot()
+		txPoolSnapshot = &types.TxPoolSnapshot{}
 	}
 
 	// Short lived cache to speed up the lookup
@@ -294,18 +294,18 @@ func (w *worker) UpdatePendingTxsInPoolSnapshot(txs []*types.Transaction, b []by
 			w.pendingTxCache[tx.Hash()] = true
 		}
 	}
-
-	// TODO(limechain): refactor, no need to return multiple lists
-	txPoolSnapshot.EstimatedGasUsed = env.header.GasLimit - env.gasPool.Gas()
-	txPoolSnapshot.BytesLength = uint64(len(b))
-
 	rawdb.WriteTxPoolSnapshot(db, txPoolSnapshot)
+
+	perSlotConstraints := rawdb.ReadPerSlotConstraints(db)
+	perSlotConstraints.Total.EstimatedGasUsed = env.header.GasLimit - env.gasPool.Gas()
+	perSlotConstraints.Total.BytesLength = uint64(len(b))
+	rawdb.WritePerSlotConstraints(db, perSlotConstraints)
 
 	return txPoolSnapshot
 }
 
 // CHANGE(limechain):
-func (w *worker) ProposeTxsInPoolSnapshot() *types.TxPoolSnapshot {
+func (w *worker) ProposeTxsInPoolSnapshot() (*types.TxPoolSnapshot, *types.PerSlotConstraints) {
 	w.txPoolSnapshotMutex.Lock()
 	defer w.txPoolSnapshotMutex.Unlock()
 
@@ -332,8 +332,9 @@ func (w *worker) ProposeTxsInPoolSnapshot() *types.TxPoolSnapshot {
 	}
 
 	rawdb.WriteTxPoolSnapshot(db, txPoolSnapshot)
+	perSlotConstraints := rawdb.ReadPerSlotConstraints(db)
 
-	return txPoolSnapshot
+	return txPoolSnapshot, perSlotConstraints
 }
 
 // CHANGE(limechain):
@@ -345,7 +346,7 @@ func (w *worker) ResetTxPoolSnapshot() {
 
 	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
 	if txPoolSnapshot == nil {
-		rawdb.WriteTxPoolSnapshot(db, types.NewTxPoolSnapshot())
+		rawdb.WriteTxPoolSnapshot(db, &types.TxPoolSnapshot{})
 		return
 	}
 
@@ -368,7 +369,7 @@ func (w *worker) ResetTxPoolSnapshot() {
 	}
 
 	// reset the snapshot and the caches
-	rawdb.WriteTxPoolSnapshot(db, types.NewTxPoolSnapshot())
+	rawdb.WriteTxPoolSnapshot(db, &types.TxPoolSnapshot{})
 	w.pendingTxCache = make(map[common.Hash]bool)
 	w.proposedTxCache = make(map[common.Hash]bool)
 
@@ -860,6 +861,15 @@ func (w *worker) txListLoop() {
 		default:
 			time.Sleep(5 * time.Second)
 
+			db := w.eth.BlockChain().DB()
+
+			// Initialize per slot constraints if not found
+			perSlotConstraints := rawdb.ReadPerSlotConstraints(db)
+			if perSlotConstraints == nil {
+				rawdb.WritePerSlotConstraints(db, types.NewPerSlotConstraints())
+			}
+
+			// Fetch tx list config
 			txListConfig := rawdb.ReadTxListConfig(w.eth.BlockChain().DB())
 			if txListConfig == nil {
 				log.Error("Tx list config not found")

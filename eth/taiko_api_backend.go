@@ -7,6 +7,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/miner"
 )
 
@@ -76,7 +77,8 @@ func NewTaikoAuthAPIBackend(eth *Ethereum) *TaikoAuthAPIBackend {
 
 // CHANGE(limechain):
 
-// UpdateConfigAndSlots updates slots and config params at the beginning of a new epoch.
+// UpdateConfigAndSlots updates the tx list configuration and assigned slots
+// at the beginning of a new epoch.
 func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
 	currentEpochAssignedSlots []uint64,
 	baseFee *big.Int,
@@ -88,15 +90,18 @@ func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
 ) error {
 	db := a.eth.ChainDb()
 
-	rawdb.WriteTxListConfig(db, &rawdb.TxListConfig{
+	txListConfig := &types.TxListConfig{
 		Beneficiary:          beneficiary,
 		BaseFee:              baseFee,
 		BlockMaxGasLimit:     blockMaxGasLimit,
 		MaxBytesPerTxList:    maxBytesPerTxList,
 		Locals:               locals,
 		MaxTransactionsLists: maxTransactionsLists,
-	})
+	}
+
+	rawdb.WriteTxListConfig(db, txListConfig)
 	rawdb.WriteAssignedL1Slots(db, currentEpochAssignedSlots)
+
 	return nil
 }
 

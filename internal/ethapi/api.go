@@ -1865,13 +1865,7 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 func validateInclusionConstraints(b Backend, tx *types.Transaction) error {
 	db := b.ChainDb()
 
-	now := time.Now().Unix()
-	currentSlot, currentEpoch := common.CurrentSlotAndEpoch(now)
-
-	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
-	if txPoolSnapshot == nil {
-		return errors.New("can't validate inclusion constraints, tx pool snapshot is unknown")
-	}
+	currentSlot, currentEpoch := common.CurrentSlotAndEpoch(time.Now().Unix())
 
 	// The deadline is for a past slot.
 	if tx.Deadline().Uint64() < currentSlot {
@@ -1888,11 +1882,16 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction) error {
 		return errors.New("can't validate inclusion constraints, assigned slots are unknown")
 	}
 
+	perSlotConstraints := rawdb.ReadPerSlotConstraints(db)
+	if perSlotConstraints == nil {
+		return errors.New("can't validate inclusion constraints, per slot constraints are unknown")
+	}
+
 	if tx.Deadline().Uint64() == currentSlot {
 		// Deadline is for the current slot.
 		if assignedToProposeBlock(currentSlot, assignedSlots) {
 			// Check whether the block space constraints are met (gas and byte estimates from the snapshot).
-			if txPoolSnapshot.EstimatedGasUsed+tx.Gas() > txListConfig.BlockMaxGasLimit {
+			if perSlotConstraints.Total.EstimatedGasUsed+tx.Gas() > txListConfig.BlockMaxGasLimit {
 				return fmt.Errorf("inclusion tx rejected, gas limit reached [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
 			}
 		} else {
@@ -1922,7 +1921,7 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction) error {
 
 	// Initially the worst-case scenario is assumed, where the tx is included in the last possible slot just prior to the deadline.
 	latestSlot := tx.Deadline().Uint64()
-	blockConstraints, err := txPoolSnapshot.GetConstraints(latestSlot)
+	blockConstraints, err := perSlotConstraints.Get(latestSlot)
 	if err != nil {
 		return fmt.Errorf("can't validate inclusion constraints, slot constraints are unknown [slot %d]", tx.Deadline().Uint64())
 	}
@@ -1931,11 +1930,12 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction) error {
 	}
 	// Update the transaction's gas and byte usage per slot, depending on the latest deadline and assigned slots
 	// and later during execution, update the constraints.
-	err = txPoolSnapshot.UpdateConstraints(tx.Deadline().Uint64(), tx.Gas(), tx.Size())
+	err = perSlotConstraints.Update(tx.Deadline().Uint64(), tx.Gas(), tx.Size())
 	if err != nil {
 		return fmt.Errorf("can't update slot constraints [slot %d]", tx.Deadline().Uint64())
 	}
-	rawdb.WriteTxPoolSnapshot(db, txPoolSnapshot)
+	rawdb.WritePerSlotConstraints(db, perSlotConstraints)
+
 	return nil
 }
 
