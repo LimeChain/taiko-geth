@@ -1865,7 +1865,12 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 func validateInclusionConstraints(b Backend, tx *types.Transaction) error {
 	db := b.ChainDb()
 
-	currentSlot, currentEpoch := common.CurrentSlotAndEpoch(time.Now().Unix())
+	l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(db)
+	if l1GenesisTimestamp == nil {
+		return errors.New("can't validate inclusion constraints, L1 genesis timestamp is unknown")
+	}
+
+	currentSlot, currentEpoch := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
 
 	// The deadline is for a past slot.
 	if tx.Deadline().Uint64() < currentSlot {

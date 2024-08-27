@@ -9,11 +9,11 @@ import (
 // CHANGE(limechain):
 
 var (
-	assignedL1Slots = []byte("AssignedL1Slots")
+	assignedL1SlotsKey = []byte("AssignedL1Slots")
 )
 
 func ReadAssignedL1Slots(db ethdb.Database) []uint64 {
-	data, err := db.Get(assignedL1Slots)
+	data, err := db.Get(assignedL1SlotsKey)
 	if err != nil {
 		return nil
 	}
@@ -36,7 +36,7 @@ func WriteAssignedL1Slots(db ethdb.Database, slots []uint64) {
 		log.Crit("Failed to RLP encode AssignedL1Slots", "err", err)
 	}
 
-	if err := db.Put(assignedL1Slots, data); err != nil {
+	if err := db.Put(assignedL1SlotsKey, data); err != nil {
 		log.Crit("Failed to store AssignedL1Slots", "err", err)
 	}
 }

@@ -132,10 +132,13 @@ func (w *worker) BuildTransactionList(
 
 	db := w.eth.BlockChain().DB()
 
-	currentSlot, _ := common.CurrentSlotAndEpoch(time.Now().Unix())
-	perSlotConstraints := rawdb.ReadPerSlotConstraints(db)
-	perSlotConstraints.Reset(currentSlot)
-	rawdb.WritePerSlotConstraints(db, perSlotConstraints)
+	l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(db)
+	if l1GenesisTimestamp != nil {
+		currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
+		perSlotConstraints := rawdb.ReadPerSlotConstraints(db)
+		perSlotConstraints.Reset(currentSlot)
+		rawdb.WritePerSlotConstraints(db, perSlotConstraints)
+	}
 
 	// TODO(limechain): remove, just for debugging purposes
 	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)

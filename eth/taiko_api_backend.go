@@ -80,6 +80,7 @@ func NewTaikoAuthAPIBackend(eth *Ethereum) *TaikoAuthAPIBackend {
 // UpdateConfigAndSlots updates the tx list configuration and assigned slots
 // at the beginning of a new epoch.
 func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
+	l1GenesisTimestamp uint64,
 	currentEpochAssignedSlots []uint64,
 	baseFee *big.Int,
 	blockMaxGasLimit uint64,
@@ -100,6 +101,7 @@ func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
 	}
 
 	rawdb.WriteTxListConfig(db, txListConfig)
+	rawdb.WriteL1GenesisTimestamp(db, l1GenesisTimestamp)
 	rawdb.WriteAssignedL1Slots(db, currentEpochAssignedSlots)
 
 	return nil
