@@ -109,5 +109,5 @@ func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
 
 // FetchTxList retrieves already pre-built list of txs.
 func (a *TaikoAuthAPIBackend) FetchTxList() ([]*miner.PreBuiltTxList, error) {
-	return a.eth.Miner().FetchTransactionList()
+	return a.eth.Miner().FetchTxList()
 }

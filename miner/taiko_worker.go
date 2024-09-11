@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -23,12 +22,13 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// BuildTransactionList builds multiple transactions lists which satisfy all the given conditions
+// UpdateTxSnapshotForSlot updates tx snapshot for the given slot satisfying all the given conditions
 // 1. All transactions should all be able to pay the given base fee.
 // 2. The total gas used should not exceed the given blockMaxGasLimit
 // 3. The total bytes used should not exceed the given maxBytesPerTxList
 // 4. The total number of transactions lists should not exceed the given maxTransactionsLists
-func (w *worker) BuildTransactionList(
+func (w *worker) UpdateTxSnapshotForSlot(
+	slotIndex uint64,
 	beneficiary common.Address,
 	baseFee *big.Int,
 	blockMaxGasLimit uint64,
@@ -36,14 +36,15 @@ func (w *worker) BuildTransactionList(
 	localAccounts []string,
 	maxTransactionsLists uint64,
 ) error {
-	log.Info("Start building tx list",
-		"beneficiary", beneficiary,
-		"baseFee", baseFee,
-		"blockMaxGasLimit", blockMaxGasLimit,
-		"maxBytesPerTxList", maxBytesPerTxList,
-		"localAccounts", localAccounts,
-		"maxTransactionsLists", maxTransactionsLists,
-	)
+	// log.Info("Update txs snapshot for slot",
+	// 	"slotIndex", slotIndex,
+	// 	"beneficiary", beneficiary,
+	// 	"baseFee", baseFee,
+	// 	"blockMaxGasLimit", blockMaxGasLimit,
+	// 	"maxBytesPerTxList", maxBytesPerTxList,
+	// 	"localAccounts", localAccounts,
+	// 	"maxTransactionsLists", maxTransactionsLists,
+	// )
 
 	currentHead := w.chain.CurrentBlock()
 	if currentHead == nil {
@@ -52,8 +53,6 @@ func (w *worker) BuildTransactionList(
 
 	// Check if tx pool is empty at first.
 	if len(w.eth.TxPool().Pending(txpool.PendingFilter{BaseFee: uint256.MustFromBig(baseFee), OnlyPlainTxs: true})) == 0 {
-		// CHANGE(limechain): tx pool has been reset, reset the tx pool snapshot.
-		w.ResetTxPoolSnapshot()
 		return nil
 	}
 
@@ -80,7 +79,7 @@ func (w *worker) BuildTransactionList(
 		localTxs, remoteTxs = w.getPendingTxs(localAccounts, baseFee)
 	)
 
-	commitTxs := func() (*types.TxPoolSnapshot, error) {
+	commitTxs := func() (*types.SlotTxSnapshot, error) {
 		env.tcount = 0
 		env.txs = []*types.Transaction{}
 		env.gasPool = new(core.GasPool).AddGas(blockMaxGasLimit)
@@ -107,45 +106,32 @@ func (w *worker) BuildTransactionList(
 
 		b, err := encodeAndComporeessTxList(env.txs)
 		if err != nil {
+			log.Error("Failed to encode and compress tx list", "err", err)
 			return nil, err
 		}
 
-		// CHANGE(limechain): keep the tx pool snapshot up to date.
-		txPoolSnapshot := w.UpdatePendingTxsInPoolSnapshot(env.txs, b, env)
-		return txPoolSnapshot, nil
+		// CHANGE(limechain): keep the tx snapshot up to date.
+		slotTxSnapshot := w.UpdateTxsInSlotSnapshot(slotIndex, env.txs, b, env)
+		return slotTxSnapshot, nil
 	}
 
 	for i := 0; i < int(maxTransactionsLists); i++ {
-		res, err := commitTxs()
+		slotTxSnapshot, err := commitTxs()
 		if err != nil {
+			log.Error("Failed to commit transactions", "err", err)
 			return err
 		}
 
-		if len(res.PendingTxs) == 0 {
+		// TODO(limechain): remove, just for debugging purposes
+		if slotTxSnapshot != nil && (len(slotTxSnapshot.PendingTxs) != 0 || len(slotTxSnapshot.ProposedTxs) != 0 || len(slotTxSnapshot.NewTxs) != 0) {
+			log.Warn("Tx snapshot pending", "slot", slotIndex, "count", len(slotTxSnapshot.PendingTxs), "txs", slotTxSnapshot.PendingTxs)
+			log.Warn("Tx snapshot proposed", "slot", slotIndex, "count", len(slotTxSnapshot.ProposedTxs), "txs", slotTxSnapshot.ProposedTxs)
+			log.Warn("Tx snapshot new", "slot", slotIndex, "count", len(slotTxSnapshot.NewTxs), "txs", slotTxSnapshot.NewTxs)
+		}
+
+		if len(slotTxSnapshot.PendingTxs) == 0 {
 			break
 		}
-	}
-
-	// TODO(limechain): During transaction execution, if sufficient block space is
-	// available in the current slot, pull and process transactions with later deadlines
-	// in the current slot, and update the per-slot constraints.
-
-	db := w.eth.BlockChain().DB()
-
-	l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(db)
-	if l1GenesisTimestamp != nil {
-		currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
-		perSlotConstraints := rawdb.ReadPerSlotConstraints(db)
-		perSlotConstraints.Reset(currentSlot)
-		rawdb.WritePerSlotConstraints(db, perSlotConstraints)
-	}
-
-	// TODO(limechain): remove, just for debugging purposes
-	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
-	if txPoolSnapshot != nil {
-		log.Warn("Tx list pending", "count", len(txPoolSnapshot.PendingTxs), "txs", txPoolSnapshot.PendingTxs)
-		log.Warn("Tx list proposed", "count", len(txPoolSnapshot.ProposedTxs), "txs", txPoolSnapshot.ProposedTxs)
-		log.Warn("Tx list new", "count", len(txPoolSnapshot.NewTxs), "txs", txPoolSnapshot.NewTxs)
 	}
 
 	return nil
@@ -318,7 +304,7 @@ func (w *worker) commitL2Transactions(
 		// Start executing the transaction
 		env.state.SetTxContext(tx.Hash(), env.tcount)
 
-		log.Warn("Processing tx", "from", from, "type", tx.Type(), "hash", tx.Hash(), "nonce", tx.Nonce(), "gasPrice", tx.GasPrice(), "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap(), "gas", tx.Gas())
+		// log.Warn("Processing tx", "from", from, "type", tx.Type(), "hash", tx.Hash(), "nonce", tx.Nonce(), "gasPrice", tx.GasPrice(), "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap(), "gas", tx.Gas())
 		_, err := w.commitTransaction(env, tx)
 		switch {
 		case errors.Is(err, core.ErrNonceTooLow):

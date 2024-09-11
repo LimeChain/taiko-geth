@@ -242,138 +242,10 @@ type worker struct {
 	fullTaskHook func()                             // Method to call before pushing the full sealing task.
 	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
 
-	// CHANGE(limechain): tx pool snapshot and caches
-	txPoolSnapshotMutex sync.RWMutex
-	pendingTxCache      map[common.Hash]bool
-	proposedTxCache     map[common.Hash]bool
-}
-
-// CHANGE(limechain):
-func (w *worker) loadPendingInCache(txPoolSnapshot *types.TxPoolSnapshot) {
-	if txPoolSnapshot == nil || (txPoolSnapshot == &types.TxPoolSnapshot{}) || w.pendingTxCache == nil {
-		w.pendingTxCache = make(map[common.Hash]bool)
-		return
-	}
-
-	for _, tx := range txPoolSnapshot.PendingTxs {
-		w.pendingTxCache[tx.Hash()] = true
-	}
-}
-
-// CHANGE(limechain):
-func (w *worker) loadProposedInCache(txPoolSnapshot *types.TxPoolSnapshot) {
-	if txPoolSnapshot == nil || (txPoolSnapshot == &types.TxPoolSnapshot{}) || w.proposedTxCache == nil {
-		w.proposedTxCache = make(map[common.Hash]bool)
-		return
-	}
-
-	for _, tx := range txPoolSnapshot.ProposedTxs {
-		w.proposedTxCache[tx.Hash()] = true
-	}
-}
-
-// CHANGE(limechain):
-func (w *worker) UpdatePendingTxsInPoolSnapshot(txs []*types.Transaction, b []byte, env *environment) *types.TxPoolSnapshot {
-	w.txPoolSnapshotMutex.Lock()
-	defer w.txPoolSnapshotMutex.Unlock()
-
-	db := w.eth.BlockChain().DB()
-
-	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
-	if txPoolSnapshot == nil {
-		// Initialize the tx pool snapshot
-		log.Info("Initialize tx pool snapshot")
-		txPoolSnapshot = &types.TxPoolSnapshot{}
-	}
-
-	// Short lived cache to speed up the lookup
-	w.loadPendingInCache(txPoolSnapshot)
-	for _, tx := range txs {
-		if !w.pendingTxCache[tx.Hash()] {
-			txPoolSnapshot.PendingTxs = append(txPoolSnapshot.PendingTxs, tx)
-			w.pendingTxCache[tx.Hash()] = true
-		}
-	}
-	rawdb.WriteTxPoolSnapshot(db, txPoolSnapshot)
-
-	perSlotConstraints := rawdb.ReadPerSlotConstraints(db)
-	perSlotConstraints.Total.EstimatedGasUsed = env.header.GasLimit - env.gasPool.Gas()
-	perSlotConstraints.Total.BytesLength = uint64(len(b))
-	rawdb.WritePerSlotConstraints(db, perSlotConstraints)
-
-	return txPoolSnapshot
-}
-
-// CHANGE(limechain):
-func (w *worker) ProposeTxsInPoolSnapshot() (*types.TxPoolSnapshot, *types.PerSlotConstraints) {
-	w.txPoolSnapshotMutex.Lock()
-	defer w.txPoolSnapshotMutex.Unlock()
-
-	db := w.eth.BlockChain().DB()
-
-	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
-
-	// Short lived cache to speed up the lookup
-	w.loadProposedInCache(txPoolSnapshot)
-
-	// Do not reset the 'NewTxs' field to handle the case of 'driver' failures.
-	// Each 'propose' call will accumulate until the 'driver' finally executes
-	// and resets the state.
-	// txPoolSnapshot.NewTxs = []*types.Transaction{}
-
-	for _, tx := range txPoolSnapshot.PendingTxs {
-		if !w.proposedTxCache[tx.Hash()] {
-			txPoolSnapshot.NewTxs = append(txPoolSnapshot.NewTxs, tx)
-			txPoolSnapshot.ProposedTxs = append(txPoolSnapshot.ProposedTxs, tx)
-			w.proposedTxCache[tx.Hash()] = true
-		} else {
-			log.Info("Skip pending tx, already proposed", "hash", tx.Hash())
-		}
-	}
-
-	rawdb.WriteTxPoolSnapshot(db, txPoolSnapshot)
-	perSlotConstraints := rawdb.ReadPerSlotConstraints(db)
-
-	return txPoolSnapshot, perSlotConstraints
-}
-
-// CHANGE(limechain):
-func (w *worker) ResetTxPoolSnapshot() {
-	w.txPoolSnapshotMutex.Lock()
-	defer w.txPoolSnapshotMutex.Unlock()
-
-	db := w.eth.BlockChain().DB()
-
-	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
-	if txPoolSnapshot == nil {
-		rawdb.WriteTxPoolSnapshot(db, &types.TxPoolSnapshot{})
-		return
-	}
-
-	newPendingTxs := []*types.Transaction{}
-
-	// Short lived cache to speed up the lookup
-	w.loadProposedInCache(txPoolSnapshot)
-	for _, tx := range txPoolSnapshot.PendingTxs {
-		if !w.proposedTxCache[tx.Hash()] {
-			newPendingTxs = append(newPendingTxs, tx)
-		}
-	}
-
-	// TODO(limechain):
-	// Handle the case where the 'driver' has failed and the 'proposer'
-	// has continued working, new pending transactions were added after
-	// that some txs have been proposed, and the 'driver' has been restarted.
-	if len(newPendingTxs) > 0 {
-		log.Error("There are new pending txs not in proposed", "txs", newPendingTxs)
-	}
-
-	// reset the snapshot and the caches
-	rawdb.WriteTxPoolSnapshot(db, &types.TxPoolSnapshot{})
-	w.pendingTxCache = make(map[common.Hash]bool)
-	w.proposedTxCache = make(map[common.Hash]bool)
-
-	log.Warn("Tx pool snapshot has been reset")
+	// CHANGE(limechain):
+	txSnapshotsMutex sync.RWMutex                   // TODO(limechain): per slot
+	pendingTxCache   map[uint8]map[common.Hash]bool // pending txs for each slot
+	proposedTxCache  map[uint8]map[common.Hash]bool // proposed txs for each slot
 }
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
@@ -429,7 +301,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	go worker.newWorkLoop(recommit)
 	go worker.resultLoop()
 	go worker.taskLoop()
-	go worker.txListLoop()
+	go worker.txSnapshotsLoop()
 
 	// Submit first work to initialize pending state.
 	if init {
@@ -850,8 +722,171 @@ func (w *worker) resultLoop() {
 	}
 }
 
-// txListLoop polls new txs from the pool and updates the tx lists.
-func (w *worker) txListLoop() {
+// CHANGE(limechain):
+func initCache() map[uint8]map[common.Hash]bool {
+	cache := make(map[uint8]map[common.Hash]bool)
+	for i := 0; i < common.EpochLength; i++ {
+		cache[uint8(i)] = make(map[common.Hash]bool)
+	}
+	return cache
+}
+
+// CHANGE(limechain):
+func (w *worker) loadPendingInCache(slotIndex uint64, slotTxSnapshot *types.SlotTxSnapshot) {
+	if (slotTxSnapshot == &types.SlotTxSnapshot{}) || w.pendingTxCache == nil {
+		w.pendingTxCache = initCache()
+		return
+	}
+
+	for _, tx := range slotTxSnapshot.PendingTxs {
+		w.pendingTxCache[uint8(slotIndex)][tx.Hash()] = true
+	}
+}
+
+// CHANGE(limechain):
+func (w *worker) loadProposedInCache(slotIndex uint64, slotTxSnapshot *types.SlotTxSnapshot) {
+	if (slotTxSnapshot == &types.SlotTxSnapshot{}) || w.proposedTxCache == nil {
+		w.proposedTxCache = initCache()
+		return
+	}
+
+	for _, tx := range slotTxSnapshot.ProposedTxs {
+		w.proposedTxCache[uint8(slotIndex)][tx.Hash()] = true
+	}
+}
+
+// CHANGE(limechain):
+func (w *worker) ProposeTxsFromSlotSnapshot(slotIndex uint64) *types.SlotTxSnapshot {
+	w.txSnapshotsMutex.Lock()
+	defer w.txSnapshotsMutex.Unlock()
+
+	db := w.eth.BlockChain().DB()
+
+	slotTxSnapshot := rawdb.ReadSlotTxSnapshot(db, slotIndex)
+
+	// Short lived cache to speed up the lookup
+	w.loadProposedInCache(slotIndex, slotTxSnapshot)
+
+	// Do not reset the 'NewTxs' field to handle the case of 'driver' failures.
+	// Each 'propose' call will accumulate until the 'driver' finally executes
+	// and resets the state.
+	// txPoolSnapshot.NewTxs = []*types.Transaction{}
+
+	for _, tx := range slotTxSnapshot.PendingTxs {
+		if !w.proposedTxCache[uint8(slotIndex)][tx.Hash()] {
+			slotTxSnapshot.NewTxs = append(slotTxSnapshot.NewTxs, tx)
+			slotTxSnapshot.ProposedTxs = append(slotTxSnapshot.ProposedTxs, tx)
+			w.proposedTxCache[uint8(slotIndex)][tx.Hash()] = true
+		}
+	}
+
+	rawdb.WriteSlotTxSnapshot(db, slotIndex, slotTxSnapshot)
+
+	return slotTxSnapshot
+}
+
+// CHANGE(limechain):
+func (w *worker) UpdateTxsInSlotSnapshot(slotIndex uint64, txs []*types.Transaction, b []byte, env *environment) *types.SlotTxSnapshot {
+	w.txSnapshotsMutex.Lock()
+	defer w.txSnapshotsMutex.Unlock()
+
+	db := w.eth.BlockChain().DB()
+
+	slotTxSnapshot := rawdb.ReadSlotTxSnapshot(db, slotIndex)
+
+	if w.resetPastSlotSnapshot(slotIndex) {
+		// Slot snapshot has been reset, return empty snapshot
+		return slotTxSnapshot
+	}
+
+	// Short lived cache to speed up the lookup
+	w.loadPendingInCache(slotIndex, slotTxSnapshot)
+	for _, tx := range txs {
+		// Skip inclusion preconfirmation txs that are not for the current slot.
+		if tx.Type() == types.InclusionPreconfirmationTxType && common.SlotIndex(tx.Deadline().Uint64()) != slotIndex {
+			continue
+		}
+		if !w.pendingTxCache[uint8(slotIndex)][tx.Hash()] {
+			slotTxSnapshot.PendingTxs = append(slotTxSnapshot.PendingTxs, tx)
+			w.pendingTxCache[uint8(slotIndex)][tx.Hash()] = true
+		}
+	}
+
+	slotTxSnapshot.EstimatedGasUsed = env.header.GasLimit - env.gasPool.Gas()
+	slotTxSnapshot.BytesLength = uint64(len(b))
+	rawdb.WriteSlotTxSnapshot(db, slotIndex, slotTxSnapshot)
+
+	return slotTxSnapshot
+}
+
+// CHANGE(limechain):
+func (w *worker) resetAllSnapshots() {
+	w.txSnapshotsMutex.Lock()
+	defer w.txSnapshotsMutex.Unlock()
+
+	// newPendingTxs := []*types.Transaction{}
+	// // Short lived cache to speed up the lookup
+	// w.loadProposedInCache(slotIndex, slotTxSnapshot)
+	// for _, tx := range slotTxSnapshot.PendingTxs {
+	// 	if !w.proposedTxCache[uint8(slotIndex)][tx.Hash()] {
+	// 		newPendingTxs = append(newPendingTxs, tx)
+	// 	}
+	// }
+	// // TODO(limechain):
+	// // Handle the case where the 'driver' has failed and the 'proposer'
+	// // has continued working, new pending transactions were added after
+	// // that some txs have been proposed, and the 'driver' has been restarted.
+	// if len(newPendingTxs) > 0 {
+	// 	log.Error("There are new pending txs not in proposed", "txs", newPendingTxs)
+	// }
+
+	for i := 0; i < common.EpochLength; i++ {
+		w.resetSlotSnapshotAndCache(uint64(i))
+	}
+	log.Warn("All snapshot has been reset")
+}
+
+// CHANGE(limechain):
+func (w *worker) resetPastSlotSnapshot(slotIndex uint64) bool {
+	db := w.eth.BlockChain().DB()
+
+	l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(db)
+	if l1GenesisTimestamp == nil {
+		log.Error("Failed to fetch L1 genesis timestamp")
+		return false
+	}
+	currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
+
+	if slotIndex < common.SlotIndex(currentSlot) {
+		// Current snapshot is for slot prior current one, reset it
+		// TODO(limechain): make sure executed txs are removed from the tx pool
+		// in the case proposer failed to propose them.
+		w.resetSlotSnapshotAndCache(uint64(slotIndex))
+		log.Warn("Past slot snapshot has been reset", "snapshot slot", slotIndex, "current slot", currentSlot)
+		return true
+	}
+
+	return false
+}
+
+func (w *worker) resetSlotSnapshotAndCache(i uint64) {
+	db := w.eth.BlockChain().DB()
+
+	rawdb.WriteSlotTxSnapshot(db, uint64(i), &types.SlotTxSnapshot{
+		PendingTxs:       []*types.Transaction{},
+		ProposedTxs:      []*types.Transaction{},
+		NewTxs:           []*types.Transaction{},
+		EstimatedGasUsed: 0,
+		BytesLength:      0,
+	})
+
+	w.pendingTxCache[uint8(i)] = make(map[common.Hash]bool)
+	w.proposedTxCache[uint8(i)] = make(map[common.Hash]bool)
+}
+
+// txSnapshotsLoop polls new txs from the pool and updates the
+// tx snapshots for each slot.
+func (w *worker) txSnapshotsLoop() {
 	defer w.wg.Done()
 
 	for {
@@ -859,35 +894,65 @@ func (w *worker) txListLoop() {
 		case <-w.exitCh:
 			return
 		default:
-			time.Sleep(5 * time.Second)
+			time.Sleep(1 * time.Second)
 
 			db := w.eth.BlockChain().DB()
 
-			// Initialize per slot constraints if not found
-			perSlotConstraints := rawdb.ReadPerSlotConstraints(db)
-			if perSlotConstraints == nil {
-				rawdb.WritePerSlotConstraints(db, types.NewPerSlotConstraints())
-			}
-
-			// Fetch tx list config
-			txListConfig := rawdb.ReadTxListConfig(w.eth.BlockChain().DB())
+			// Fetch tx list configuration to use for tx snapshot updates.
+			txListConfig := rawdb.ReadTxListConfig(db)
 			if txListConfig == nil {
-				log.Error("Tx list config not found")
+				log.Error("Failed to fetch tx list config")
 				continue
 			}
-			log.Warn("Fetch tx list config", "beneficiary", txListConfig.Beneficiary, "base fee", txListConfig.BaseFee, "block max gas limit", txListConfig.BlockMaxGasLimit, "max bytes per tx list", txListConfig.MaxBytesPerTxList)
 
-			err := w.BuildTransactionList(
-				txListConfig.Beneficiary,
-				txListConfig.BaseFee,
-				txListConfig.BlockMaxGasLimit,
-				txListConfig.MaxBytesPerTxList,
-				txListConfig.Locals,
-				txListConfig.MaxTransactionsLists,
-			)
-			if err != nil {
-				log.Error("Building tx list", "error", err)
+			// Fetch L1 genesis timestamp to calculate the current slot.
+			l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(db)
+			if l1GenesisTimestamp == nil {
+				log.Error("Failed to fetch L1 genesis timestamp")
 				continue
+			}
+			currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
+			currentSlotIndex := common.SlotIndex(currentSlot)
+
+			log.Info(
+				"Snapshots update loop started",
+				"current slot", currentSlot,
+				"slot index", currentSlotIndex,
+				"beneficiary", txListConfig.Beneficiary,
+				"base fee", txListConfig.BaseFee,
+				"block max gas limit", txListConfig.BlockMaxGasLimit,
+				"max bytes per tx list", txListConfig.MaxBytesPerTxList,
+			)
+
+			// Reset all snapshots if the tx pool is empty.
+			if len(w.eth.TxPool().Pending(txpool.PendingFilter{BaseFee: uint256.MustFromBig(txListConfig.BaseFee), OnlyPlainTxs: true})) == 0 {
+				log.Warn("Tx pool is empty, all txs have been executed, reset all snapshots")
+				w.resetAllSnapshots()
+				continue
+			}
+
+			// Loop through each slot starting from the current one
+			// up to the last and update the snapshot (simulate preconf txs and store receipts).
+			for i := uint64(currentSlotIndex); i < uint64(common.EpochLength); i++ {
+				// Initialize the slot snapshot if it does not exist.
+				slotTxSnapshot := rawdb.ReadSlotTxSnapshot(db, i)
+				if slotTxSnapshot == nil {
+					rawdb.WriteSlotTxSnapshot(db, i, &types.SlotTxSnapshot{})
+				}
+
+				err := w.UpdateTxSnapshotForSlot(
+					i,
+					txListConfig.Beneficiary,
+					txListConfig.BaseFee,
+					txListConfig.BlockMaxGasLimit,
+					txListConfig.MaxBytesPerTxList,
+					txListConfig.Locals,
+					txListConfig.MaxTransactionsLists,
+				)
+				if err != nil {
+					log.Error("Tx snapshot update failed", "slot index", i, "error", err)
+					continue
+				}
 			}
 		}
 	}
@@ -954,7 +1019,7 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 			receipt.EffectiveGasPrice = tx.EffectiveGasTipValue(head.BaseFee)
 		}
 		rawdb.WritePreconfReceipt(db, receipt, &from, to)
-		log.Info("Store inclusion preconfirmation tx receipt", "index", receipt.TransactionIndex, "hash", tx.Hash().String(), "from", from.String(), "to", to.String())
+		// log.Info("Store inclusion preconfirmation tx receipt", "index", receipt.TransactionIndex, "hash", tx.Hash().String(), "from", from.String(), "to", to.String())
 	}
 
 	return receipt.Logs, nil

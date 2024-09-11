@@ -3,9 +3,11 @@ package miner
 import (
 	"errors"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -30,19 +32,51 @@ func (miner *Miner) SealBlockWith(
 
 // CHANGE(limechain):
 
-// FetchTransactionList retrieves already pre-built list of txs.
-func (miner *Miner) FetchTransactionList() ([]*PreBuiltTxList, error) {
-	txPoolSnapshot, perSlotConstraints := miner.worker.ProposeTxsInPoolSnapshot()
+// FetchTxList retrieves already pre-built list of txs.
+func (miner *Miner) FetchTxList() ([]*PreBuiltTxList, error) {
+	db := miner.worker.chain.DB()
 
-	if txPoolSnapshot == nil || perSlotConstraints == nil {
-		return nil, errors.New("failed to fetch txs to propose")
+	l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(db)
+	if l1GenesisTimestamp == nil {
+		return nil, errors.New("failed to fetch L1 genesis timestamp")
 	}
 
-	// TODO(limechain): refactor, no need to return multiple lists
+	txListConfig := rawdb.ReadTxListConfig(db)
+	if txListConfig == nil {
+		return nil, errors.New("failed to fetch tx list config")
+	}
+
+	var (
+		txs          types.Transactions
+		totalGasUsed uint64
+		totalBytes   uint64
+	)
+
+	currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
+	slotIndex := common.SlotIndex(currentSlot)
+
+	for i := slotIndex; i < uint64(common.EpochLength); i++ {
+		slotTxSnapshot := rawdb.ReadSlotTxSnapshot(db, i)
+		if totalGasUsed+slotTxSnapshot.EstimatedGasUsed > txListConfig.BlockMaxGasLimit ||
+			totalBytes+slotTxSnapshot.BytesLength > txListConfig.MaxBytesPerTxList {
+			break
+		}
+
+		slotTxSnapshot = miner.worker.ProposeTxsFromSlotSnapshot(i)
+		if len(slotTxSnapshot.NewTxs) == 0 {
+			break
+		}
+
+		txs = append(txs, slotTxSnapshot.NewTxs...)
+		totalGasUsed += slotTxSnapshot.EstimatedGasUsed
+		totalBytes += slotTxSnapshot.BytesLength
+	}
+
+	// TODO(limechain): refactor to support multiple tx lists
 	txList := &PreBuiltTxList{
-		TxList:           txPoolSnapshot.NewTxs,
-		EstimatedGasUsed: perSlotConstraints.Total.EstimatedGasUsed,
-		BytesLength:      perSlotConstraints.Total.BytesLength,
+		TxList:           txs,
+		EstimatedGasUsed: totalGasUsed,
+		BytesLength:      totalBytes,
 	}
 
 	return []*PreBuiltTxList{txList}, nil
