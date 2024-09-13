@@ -776,7 +776,11 @@ func (w *worker) ProposeTxsFromSlotSnapshot(slotIndex uint64) *types.SlotTxSnaps
 		if !w.proposedTxCache[uint8(slotIndex)][tx.Hash()] {
 			slotTxSnapshot.NewTxs = append(slotTxSnapshot.NewTxs, tx)
 			slotTxSnapshot.ProposedTxs = append(slotTxSnapshot.ProposedTxs, tx)
-			w.proposedTxCache[uint8(slotIndex)][tx.Hash()] = true
+			if w.proposedTxCache[uint8(slotIndex)] != nil {
+				w.proposedTxCache[uint8(slotIndex)][tx.Hash()] = true
+			} else {
+				w.proposedTxCache[uint8(slotIndex)] = map[common.Hash]bool{tx.Hash(): true}
+			}
 		}
 	}
 
@@ -812,7 +816,7 @@ func (w *worker) UpdateTxsInSlotSnapshot(slotIndex uint64, txs []*types.Transact
 		}
 	}
 
-	slotTxSnapshot.EstimatedGasUsed = env.header.GasLimit - env.gasPool.Gas()
+	slotTxSnapshot.GasUsed = env.header.GasLimit - env.gasPool.Gas()
 	slotTxSnapshot.BytesLength = uint64(len(b))
 	rawdb.WriteSlotTxSnapshot(db, slotIndex, slotTxSnapshot)
 
@@ -873,15 +877,19 @@ func (w *worker) resetSlotSnapshotAndCache(i uint64) {
 	db := w.eth.BlockChain().DB()
 
 	rawdb.WriteSlotTxSnapshot(db, uint64(i), &types.SlotTxSnapshot{
-		PendingTxs:       []*types.Transaction{},
-		ProposedTxs:      []*types.Transaction{},
-		NewTxs:           []*types.Transaction{},
-		EstimatedGasUsed: 0,
-		BytesLength:      0,
+		PendingTxs:  []*types.Transaction{},
+		ProposedTxs: []*types.Transaction{},
+		NewTxs:      []*types.Transaction{},
+		GasUsed:     0,
+		BytesLength: 0,
 	})
 
-	w.pendingTxCache[uint8(i)] = make(map[common.Hash]bool)
-	w.proposedTxCache[uint8(i)] = make(map[common.Hash]bool)
+	if w.pendingTxCache != nil {
+		w.pendingTxCache[uint8(i)] = make(map[common.Hash]bool)
+	}
+	if w.proposedTxCache != nil {
+		w.proposedTxCache[uint8(i)] = make(map[common.Hash]bool)
+	}
 }
 
 // txSnapshotsLoop polls new txs from the pool and updates the

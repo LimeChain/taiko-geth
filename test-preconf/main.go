@@ -31,7 +31,8 @@ var (
 
 	pastSlotDeadline        = new(big.Int).Add(new(big.Int).SetUint64(currentSlot), big.NewInt(-1))
 	currentSlotDeadline     = new(big.Int).Add(new(big.Int).SetUint64(currentSlot), big.NewInt(0))
-	notAssignedSlotDeadline = new(big.Int).Add(new(big.Int).SetUint64(currentSlot), big.NewInt(1))
+	nextSlotDeadline        = new(big.Int).Add(new(big.Int).SetUint64(currentSlot), big.NewInt(1))
+	notAssignedSlotDeadline = new(big.Int).Add(new(big.Int).SetUint64(currentSlot), big.NewInt(2))
 	nextEpochDeadline       = new(big.Int).Add(new(big.Int).SetUint64(currentSlot), big.NewInt(100))
 
 	gasPriceMultiplier = big.NewInt(1_000_000)
@@ -221,7 +222,7 @@ var (
 				types.InclusionPreconfirmationTx{Nonce: nonce + 2, To: george.Address(), Deadline: currentSlotDeadline}, // not preconfirmed
 			},
 			*george.Address(): {
-				types.InclusionPreconfirmationTx{Nonce: nonce + 0, To: george.Address(), Deadline: currentSlotDeadline},
+				types.InclusionPreconfirmationTx{Nonce: nonce + 0, To: george.Address(), Deadline: nextSlotDeadline},
 			},
 		}[addr]
 	}

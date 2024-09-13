@@ -2,12 +2,14 @@ package eth
 
 import (
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/miner"
 )
 
@@ -77,11 +79,10 @@ func NewTaikoAuthAPIBackend(eth *Ethereum) *TaikoAuthAPIBackend {
 
 // CHANGE(limechain):
 
-// UpdateConfigAndSlots updates the tx list configuration and assigned slots
-// at the beginning of a new epoch.
+// UpdateConfigAndSlots updates the tx list configuration and assigned slots.
 func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
 	l1GenesisTimestamp uint64,
-	currentEpochAssignedSlots []uint64,
+	newAssignedSlots []uint64,
 	baseFee *big.Int,
 	blockMaxGasLimit uint64,
 	maxBytesPerTxList uint64,
@@ -100,14 +101,25 @@ func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
 		MaxTransactionsLists: maxTransactionsLists,
 	}
 
-	rawdb.WriteTxListConfig(db, txListConfig)
 	rawdb.WriteL1GenesisTimestamp(db, l1GenesisTimestamp)
-	rawdb.WriteAssignedL1Slots(db, currentEpochAssignedSlots)
+	rawdb.WriteTxListConfig(db, txListConfig)
+
+	currentSlot, _ := common.CurrentSlotAndEpoch(l1GenesisTimestamp, time.Now().Unix())
+	storedSlots := rawdb.ReadAssignedL1Slots(db)
+	updatedAssignedSlots := make([]uint64, 0)
+	for _, slot := range storedSlots {
+		if slot >= currentSlot {
+			updatedAssignedSlots = append(updatedAssignedSlots, slot)
+		}
+	}
+	slots := append(updatedAssignedSlots, newAssignedSlots...)
+	rawdb.WriteAssignedL1Slots(db, slots)
+	log.Info("Assigned slots were updated", "slots", slots)
 
 	return nil
 }
 
 // FetchTxList retrieves already pre-built list of txs.
-func (a *TaikoAuthAPIBackend) FetchTxList() ([]*miner.PreBuiltTxList, error) {
-	return a.eth.Miner().FetchTxList()
+func (a *TaikoAuthAPIBackend) FetchTxList(slot uint64) ([]*miner.PreBuiltTxList, error) {
+	return a.eth.Miner().FetchTxList(slot)
 }

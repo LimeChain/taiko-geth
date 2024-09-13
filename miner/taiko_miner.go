@@ -3,7 +3,6 @@ package miner
 import (
 	"errors"
 	"math/big"
-	"time"
 
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
@@ -33,7 +32,7 @@ func (miner *Miner) SealBlockWith(
 // CHANGE(limechain):
 
 // FetchTxList retrieves already pre-built list of txs.
-func (miner *Miner) FetchTxList() ([]*PreBuiltTxList, error) {
+func (miner *Miner) FetchTxList(slot uint64) ([]*PreBuiltTxList, error) {
 	db := miner.worker.chain.DB()
 
 	l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(db)
@@ -52,25 +51,25 @@ func (miner *Miner) FetchTxList() ([]*PreBuiltTxList, error) {
 		totalBytes   uint64
 	)
 
-	currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
-	slotIndex := common.SlotIndex(currentSlot)
+	// currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
+	// slotIndex := common.SlotIndex(currentSlot)
 
-	for i := slotIndex; i < uint64(common.EpochLength); i++ {
-		slotTxSnapshot := rawdb.ReadSlotTxSnapshot(db, i)
-		if totalGasUsed+slotTxSnapshot.EstimatedGasUsed > txListConfig.BlockMaxGasLimit ||
-			totalBytes+slotTxSnapshot.BytesLength > txListConfig.MaxBytesPerTxList {
-			break
-		}
+	// for i := slotIndex; i < uint64(common.EpochLength); i++ {
+	// slotTxSnapshot := rawdb.ReadSlotTxSnapshot(db, i)
+	// if totalGasUsed+slotTxSnapshot.GasUsed > txListConfig.BlockMaxGasLimit ||
+	// 	totalBytes+slotTxSnapshot.BytesLength > txListConfig.MaxBytesPerTxList {
+	// 	break
+	// }
 
-		slotTxSnapshot = miner.worker.ProposeTxsFromSlotSnapshot(i)
-		if len(slotTxSnapshot.NewTxs) == 0 {
-			break
-		}
+	slotTxSnapshot := miner.worker.ProposeTxsFromSlotSnapshot(slot)
+	// if len(slotTxSnapshot.NewTxs) == 0 {
+	// break
+	// }
 
-		txs = append(txs, slotTxSnapshot.NewTxs...)
-		totalGasUsed += slotTxSnapshot.EstimatedGasUsed
-		totalBytes += slotTxSnapshot.BytesLength
-	}
+	txs = append(txs, slotTxSnapshot.NewTxs...)
+	totalGasUsed += slotTxSnapshot.GasUsed
+	totalBytes += slotTxSnapshot.BytesLength
+	// }
 
 	// TODO(limechain): refactor to support multiple tx lists
 	txList := &PreBuiltTxList{

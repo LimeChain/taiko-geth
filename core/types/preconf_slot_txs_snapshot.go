@@ -11,6 +11,6 @@ type SlotTxSnapshot struct {
 	// New txs that are ready to be proposed, kept until actually executed
 	NewTxs Transactions
 	// Keeps track of the block space constraints per slot, in the current epoch prior actual execution
-	EstimatedGasUsed uint64
-	BytesLength      uint64
+	GasUsed     uint64
+	BytesLength uint64
 }
