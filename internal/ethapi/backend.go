@@ -101,6 +101,7 @@ type Backend interface {
 
 func GetAPIs(apiBackend Backend) []rpc.API {
 	nonceLock := new(AddrLocker)
+	slotEstLock := new(SlotEstimatesLocker)
 	return []rpc.API{
 		{
 			Namespace: "eth",
@@ -110,7 +111,7 @@ func GetAPIs(apiBackend Backend) []rpc.API {
 			Service:   NewBlockChainAPI(apiBackend),
 		}, {
 			Namespace: "eth",
-			Service:   NewTransactionAPI(apiBackend, nonceLock),
+			Service:   NewTransactionAPI(apiBackend, nonceLock, slotEstLock),
 		}, {
 			Namespace: "txpool",
 			Service:   NewTxPoolAPI(apiBackend),

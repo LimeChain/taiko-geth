@@ -481,7 +481,7 @@ func (s *PersonalAccountAPI) SendTransaction(ctx context.Context, args Transacti
 		log.Warn("Failed transaction send attempt", "from", args.from(), "to", args.To, "value", args.Value.ToInt(), "err", err)
 		return common.Hash{}, err
 	}
-	return SubmitTransaction(ctx, s.b, signed)
+	return SubmitTransaction(ctx, s.b, signed, nil)
 }
 
 // SignTransaction will create a transaction from the given arguments and
@@ -1566,17 +1566,18 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 
 // TransactionAPI exposes methods for reading and creating transaction data.
 type TransactionAPI struct {
-	b         Backend
-	nonceLock *AddrLocker
-	signer    types.Signer
+	b           Backend
+	nonceLock   *AddrLocker
+	slotEstLock *SlotEstimatesLocker
+	signer      types.Signer
 }
 
 // NewTransactionAPI creates a new RPC service with methods for interacting with transactions.
-func NewTransactionAPI(b Backend, nonceLock *AddrLocker) *TransactionAPI {
+func NewTransactionAPI(b Backend, nonceLock *AddrLocker, slotEstLock *SlotEstimatesLocker) *TransactionAPI {
 	// The signer used by the API should always be the 'latest' known one because we expect
 	// signers to be backwards-compatible with old transactions.
 	signer := types.LatestSigner(b.ChainConfig())
-	return &TransactionAPI{b, nonceLock, signer}
+	return &TransactionAPI{b, nonceLock, slotEstLock, signer}
 }
 
 // GetBlockTransactionCountByNumber returns the number of transactions in the block with the given block number.
@@ -1821,7 +1822,7 @@ func (s *TransactionAPI) sign(addr common.Address, tx *types.Transaction) (*type
 }
 
 // SubmitTransaction is a helper function that submits tx to txPool and logs a message.
-func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (common.Hash, error) {
+func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction, slotEstLock *SlotEstimatesLocker) (common.Hash, error) {
 	// If the transaction fee cap is already specified, ensure the
 	// fee of the given transaction is _reasonable_.
 	if err := checkTxFee(tx.GasPrice(), tx.Gas(), b.RPCTxFeeCap()); err != nil {
@@ -1830,7 +1831,7 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 
 	// CHANGE(limechain): check whether inclusion constraints are met.
 	if tx.Type() == types.InclusionPreconfirmationTxType {
-		err := validateInclusionConstraints(b, tx)
+		err := validateInclusionConstraints(b, tx, slotEstLock)
 		if err != nil {
 			return common.Hash{}, err
 		}
@@ -1862,21 +1863,20 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 
 // CHANGE(limechain):
 
-func validateInclusionConstraints(b Backend, tx *types.Transaction) error {
+func validateInclusionConstraints(b Backend, tx *types.Transaction, slotEstLock *SlotEstimatesLocker) error {
 	db := b.ChainDb()
 
 	l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(db)
 	if l1GenesisTimestamp == nil {
 		return errors.New("can't validate inclusion constraints, L1 genesis timestamp is unknown")
 	}
-
 	currentSlot, currentEpoch := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
 	log.Warn("WEB: current", "slot", currentSlot, "index", common.SlotIndex(currentSlot))
 
-	// Do not accept txs with deadlines that are for a past or current slot, as it is not possible to include them.
+	// Do not accept txs with deadlines that are for a past or current slots, as it is not possible to include them.
 	// The deadline check needs to be done in advance.
 	if tx.Deadline().Uint64() <= currentSlot {
-		return fmt.Errorf("inclusion tx rejected, deadline is in the past [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
+		return fmt.Errorf("inclusion tx rejected, deadline is for past or current slot [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
 	}
 
 	txListConfig := rawdb.ReadTxListConfig(db)
@@ -1890,19 +1890,12 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction) error {
 	}
 
 	// TODO(limechain): reset previous slot estimates
+	storedSlotEstimates := NewStoredSlotEstimates(db, slotEstLock)
 
 	if tx.Deadline().Uint64() == currentSlot+1 {
 		// There are per slot gas/bytes estimates, which are separate from the actual gas/bytes
 		// in the tx snapshots accessed by the worker
-		slotEstimates := rawdb.ReadSlotEstimates(db, currentSlot)
-		if slotEstimates == nil {
-			slotEstimates = &types.SlotEstimates{
-				GasUsed:     0,
-				BytesLength: 0,
-			}
-			rawdb.WriteSlotEstimates(db, currentSlot, slotEstimates)
-			// return errors.New("can't validate inclusion constraints, slot estimates are unknown")
-		}
+		slotEstimates := storedSlotEstimates.Read(currentSlot)
 		// Deadline is for the current slot.
 		if assignedToProposeBlock(currentSlot, assignedSlots) {
 			// Check whether the block space constraints are met (gas and byte estimates).
@@ -1914,7 +1907,7 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction) error {
 			return fmt.Errorf("inclusion tx rejected, not assigned to propose block [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
 		}
 
-		updateSlotEstimates(b, slotEstimates, currentSlot, tx.Gas(), tx.Size())
+		updateSlotEstimates(storedSlotEstimates, slotEstimates, currentSlot, tx.Gas(), tx.Size())
 		return nil
 	}
 
@@ -1940,20 +1933,20 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction) error {
 
 	// Initially the worst-case scenario is assumed, where the tx is included in the last possible slot just prior to the deadline.
 	futureSlot := tx.Deadline().Uint64()
-	futureSlotEstimates := rawdb.ReadSlotEstimates(db, futureSlot)
+	futureSlotEstimates := storedSlotEstimates.Read(futureSlot)
 	if futureSlotEstimates.GasUsed+tx.Gas() > txListConfig.BlockMaxGasLimit || futureSlotEstimates.BytesLength+tx.Size() > txListConfig.MaxBytesPerTxList {
 		return fmt.Errorf("inclusion tx rejected, gas or bytes limit reached [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
 	}
 	// Update the transaction's gas and byte usage per slot, depending on the latest deadline and assigned slots
 	// and later during execution, update the constraints.
-	updateSlotEstimates(b, futureSlotEstimates, futureSlot, tx.Gas(), tx.Size())
+	updateSlotEstimates(storedSlotEstimates, futureSlotEstimates, futureSlot, tx.Gas(), tx.Size())
 	return nil
 }
 
-func updateSlotEstimates(b Backend, slotEstimates *types.SlotEstimates, slot uint64, gas uint64, bytes uint64) {
+func updateSlotEstimates(storedSlotEstimates *StoredSlotEstimates, slotEstimates *types.SlotEstimates, slot uint64, gas uint64, bytes uint64) {
 	slotEstimates.GasUsed += gas
 	slotEstimates.BytesLength += bytes
-	rawdb.WriteSlotEstimates(b.ChainDb(), slot, slotEstimates)
+	storedSlotEstimates.Write(slot, slotEstimates)
 	log.Warn("Update slot estimates", "slot", slot, "gasUsed", gas, "bytesLength", bytes)
 }
 
@@ -2006,7 +1999,7 @@ func (s *TransactionAPI) SendTransaction(ctx context.Context, args TransactionAr
 	if err != nil {
 		return common.Hash{}, err
 	}
-	return SubmitTransaction(ctx, s.b, signed)
+	return SubmitTransaction(ctx, s.b, signed, s.slotEstLock)
 }
 
 // FillTransaction fills the defaults (nonce, gas, gasPrice or 1559 fields)
@@ -2035,7 +2028,7 @@ func (s *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil.B
 	if err := tx.UnmarshalBinary(input); err != nil {
 		return common.Hash{}, err
 	}
-	return SubmitTransaction(ctx, s.b, tx)
+	return SubmitTransaction(ctx, s.b, tx, s.slotEstLock)
 }
 
 // Sign calculates an ECDSA signature for:
