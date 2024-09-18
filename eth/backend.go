@@ -227,7 +227,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if config.TxPool.Journal != "" {
 		config.TxPool.Journal = stack.ResolvePath(config.TxPool.Journal)
 	}
-	legacyPool := legacypool.New(config.TxPool, eth.blockchain)
+
+	invPreconfTxEventCh := make(chan core.InvalidPreconfTxEvent)
+
+	legacyPool := legacypool.New(config.TxPool, eth.blockchain, invPreconfTxEventCh)
 
 	eth.txPool, err = txpool.New(config.TxPool.PriceLimit, eth.blockchain, []txpool.SubPool{legacyPool, blobPool})
 	if err != nil {
@@ -249,7 +252,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		return nil, err
 	}
 
-	eth.miner = miner.New(eth, &config.Miner, eth.blockchain.Config(), eth.EventMux(), eth.engine, eth.isLocalBlock)
+	eth.miner = miner.New(eth, &config.Miner, eth.blockchain.Config(), eth.EventMux(), eth.engine, eth.isLocalBlock, invPreconfTxEventCh)
 	eth.miner.SetExtra(makeExtraData(config.Miner.ExtraData))
 
 	eth.APIBackend = &EthAPIBackend{stack.Config().ExtRPCEnabled(), stack.Config().AllowUnprotectedTxs, eth, nil}

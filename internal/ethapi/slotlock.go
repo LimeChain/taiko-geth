@@ -65,3 +65,5 @@ func (s *StoredSlotEstimates) Write(slot uint64, slotEstimates *types.SlotEstima
 
 	rawdb.WriteSlotEstimates(s.db, slot, slotEstimates)
 }
+
+func (s *StoredSlotEstimates) ResetPast() {}

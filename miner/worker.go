@@ -182,6 +182,7 @@ type worker struct {
 
 	// Feeds
 	pendingLogsFeed event.Feed
+	preconfTxFeed   event.Feed
 
 	// Subscriptions
 	mux          *event.TypeMux
@@ -248,7 +249,7 @@ type worker struct {
 	proposedTxCache  map[uint8]map[common.Hash]bool // proposed txs for each slot
 }
 
-func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
+func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool, invPreconfTxEventCh chan core.InvalidPreconfTxEvent) *worker {
 	worker := &worker{
 		config:             config,
 		chainConfig:        chainConfig,
@@ -276,6 +277,8 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	worker.txsSub = eth.TxPool().SubscribeTransactions(worker.txsCh, true)
 	// Subscribe events for blockchain
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
+
+	worker.preconfTxFeed.Subscribe(invPreconfTxEventCh)
 
 	// Sanitize recommit interval if the user-specified one is too short.
 	recommit := worker.config.Recommit
@@ -805,7 +808,19 @@ func (w *worker) UpdateTxsInSlotSnapshot(slotIndex uint64, txs []*types.Transact
 
 	// Short lived cache to speed up the lookup
 	w.loadPendingInCache(slotIndex, slotTxSnapshot)
+
+	l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(db)
+	if l1GenesisTimestamp == nil {
+		log.Error("Failed to fetch L1 genesis timestamp")
+		return nil
+	}
+	currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
+
 	for _, tx := range txs {
+		if tx.Deadline().Uint64() < currentSlot {
+			w.preconfTxFeed.Send(core.InvalidPreconfTxEvent{TxHash: tx.Hash()})
+		}
+
 		// Skip inclusion preconfirmation txs that are not for the current slot.
 		if tx.Type() == types.InclusionPreconfirmationTxType && common.SlotIndex(tx.Deadline().Uint64()) != slotIndex {
 			continue

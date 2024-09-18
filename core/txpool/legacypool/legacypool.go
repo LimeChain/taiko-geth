@@ -200,13 +200,14 @@ func (config *Config) sanitize() Config {
 // current state) and future transactions. Transactions move between those
 // two states over time as they are received and processed.
 type LegacyPool struct {
-	config      Config
-	chainconfig *params.ChainConfig
-	chain       BlockChain
-	gasTip      atomic.Pointer[uint256.Int]
-	txFeed      event.Feed
-	signer      types.Signer
-	mu          sync.RWMutex
+	config        Config
+	chainconfig   *params.ChainConfig
+	chain         BlockChain
+	gasTip        atomic.Pointer[uint256.Int]
+	txFeed        event.Feed
+	preconfTxFeed event.Feed
+	signer        types.Signer
+	mu            sync.RWMutex
 
 	currentHead   atomic.Pointer[types.Header] // Current head of the blockchain
 	currentState  *state.StateDB               // Current state in the blockchain head
@@ -221,6 +222,8 @@ type LegacyPool struct {
 	beats   map[common.Address]time.Time // Last heartbeat from each known account
 	all     *lookup                      // All transactions to allow lookups
 	priced  *pricedList                  // All transactions sorted by price
+
+	invPreconfTxEventCh chan core.InvalidPreconfTxEvent
 
 	reqResetCh      chan *txpoolResetRequest
 	reqPromoteCh    chan *accountSet
@@ -239,26 +242,27 @@ type txpoolResetRequest struct {
 
 // New creates a new transaction pool to gather, sort and filter inbound
 // transactions from the network.
-func New(config Config, chain BlockChain) *LegacyPool {
+func New(config Config, chain BlockChain, invPreconfTxEventCh chan core.InvalidPreconfTxEvent) *LegacyPool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
 
 	// Create the transaction pool with its initial settings
 	pool := &LegacyPool{
-		config:          config,
-		chain:           chain,
-		chainconfig:     chain.Config(),
-		signer:          types.LatestSigner(chain.Config()),
-		pending:         make(map[common.Address]*list),
-		queue:           make(map[common.Address]*list),
-		beats:           make(map[common.Address]time.Time),
-		all:             newLookup(),
-		reqResetCh:      make(chan *txpoolResetRequest),
-		reqPromoteCh:    make(chan *accountSet),
-		queueTxEventCh:  make(chan *types.Transaction),
-		reorgDoneCh:     make(chan chan struct{}),
-		reorgShutdownCh: make(chan struct{}),
-		initDoneCh:      make(chan struct{}),
+		config:              config,
+		chain:               chain,
+		chainconfig:         chain.Config(),
+		signer:              types.LatestSigner(chain.Config()),
+		pending:             make(map[common.Address]*list),
+		queue:               make(map[common.Address]*list),
+		beats:               make(map[common.Address]time.Time),
+		all:                 newLookup(),
+		invPreconfTxEventCh: invPreconfTxEventCh,
+		reqResetCh:          make(chan *txpoolResetRequest),
+		reqPromoteCh:        make(chan *accountSet),
+		queueTxEventCh:      make(chan *types.Transaction),
+		reorgDoneCh:         make(chan chan struct{}),
+		reorgShutdownCh:     make(chan struct{}),
+		initDoneCh:          make(chan struct{}),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -324,9 +328,20 @@ func (pool *LegacyPool) Init(gasTip uint64, head *types.Header, reserve txpool.A
 			log.Warn("Failed to rotate transaction journal", "err", err)
 		}
 	}
-	pool.wg.Add(1)
+	pool.preconfTxFeed.Subscribe(pool.invPreconfTxEventCh)
+	pool.wg.Add(2)
+	go pool.eventLoop()
 	go pool.loop()
 	return nil
+}
+
+func (pool *LegacyPool) eventLoop() {
+	for {
+		select {
+		case event := <-pool.invPreconfTxEventCh:
+			pool.removeTx(event.TxHash, true, true)
+		}
+	}
 }
 
 // loop is the transaction pool's main event loop, waiting for and reacting to
@@ -1103,6 +1118,7 @@ func (pool *LegacyPool) Has(hash common.Hash) bool {
 //
 // Returns the number of transactions removed from the pending queue.
 func (pool *LegacyPool) removeTx(hash common.Hash, outofbound bool, unreserve bool) int {
+	log.Info("Tx is removed from the pool", "hash", hash.String())
 	// Fetch the transaction we wish to delete
 	tx := pool.all.Get(hash)
 	if tx == nil {
