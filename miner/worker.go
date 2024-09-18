@@ -244,6 +244,7 @@ type worker struct {
 	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
 
 	// CHANGE(limechain):
+	// TODO(limechain): refactor locks
 	txSnapshotsMutex sync.RWMutex                   // TODO(limechain): per slot
 	pendingTxCache   map[uint8]map[common.Hash]bool // pending txs for each slot
 	proposedTxCache  map[uint8]map[common.Hash]bool // proposed txs for each slot
@@ -758,8 +759,8 @@ func (w *worker) loadProposedInCache(slotIndex uint64, slotTxSnapshot *types.Slo
 	}
 }
 
-// CHANGE(limechain):
-func (w *worker) ProposeTxsFromSlotSnapshot(slotIndex uint64) *types.SlotTxSnapshot {
+// CHANGE(limechain): ProposeTxsFromSlotSnapshot proposes txs from the slot snapshot.
+func (w *worker) ProposeSlotSnapshotTxs(slotIndex uint64) *types.SlotTxSnapshot {
 	w.txSnapshotsMutex.Lock()
 	defer w.txSnapshotsMutex.Unlock()
 
@@ -792,22 +793,12 @@ func (w *worker) ProposeTxsFromSlotSnapshot(slotIndex uint64) *types.SlotTxSnaps
 	return slotTxSnapshot
 }
 
-// CHANGE(limechain):
-func (w *worker) UpdateTxsInSlotSnapshot(slotIndex uint64, txs []*types.Transaction, b []byte, env *environment) *types.SlotTxSnapshot {
+// CHANGE(limechain): UpdateSlotSnapshotTxs updates the slot snapshot with the new txs.
+func (w *worker) UpdateSlotSnapshotTxs(slotIndex uint64, txs []*types.Transaction, b []byte, env *environment) *types.SlotTxSnapshot {
 	w.txSnapshotsMutex.Lock()
 	defer w.txSnapshotsMutex.Unlock()
 
 	db := w.eth.BlockChain().DB()
-
-	slotTxSnapshot := rawdb.ReadSlotTxSnapshot(db, slotIndex)
-
-	if w.resetPastSlotSnapshot(slotIndex) {
-		// Slot snapshot has been reset, return empty snapshot
-		return slotTxSnapshot
-	}
-
-	// Short lived cache to speed up the lookup
-	w.loadPendingInCache(slotIndex, slotTxSnapshot)
 
 	l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(db)
 	if l1GenesisTimestamp == nil {
@@ -816,15 +807,35 @@ func (w *worker) UpdateTxsInSlotSnapshot(slotIndex uint64, txs []*types.Transact
 	}
 	currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
 
+	slotTxSnapshot := rawdb.ReadSlotTxSnapshot(db, slotIndex)
+
+	if w.resetPastSlotSnapshot(slotIndex, currentSlot) {
+		// TODO(limechain): slot snapshot is reset, return empty snapshot
+		return slotTxSnapshot
+	}
+
+	// Short lived cache to speed up the lookup
+	w.loadPendingInCache(slotIndex, slotTxSnapshot)
+
 	for _, tx := range txs {
-		if tx.Deadline().Uint64() < currentSlot {
-			w.preconfTxFeed.Send(core.InvalidPreconfTxEvent{TxHash: tx.Hash()})
+		if tx.Type() == types.InclusionPreconfirmationTxType {
+			// Remove preconfirmation txs with slot deadlines that have already
+			// passed.
+			if tx.Deadline().Uint64() < currentSlot {
+				w.preconfTxFeed.Send(core.InvalidPreconfTxEvent{TxHash: tx.Hash()})
+				continue
+			}
+
+			// Skip inclusion preconfirmation txs that are not for the slot
+			// we are currently updating.
+			if common.SlotIndex(tx.Deadline().Uint64()) != slotIndex {
+				continue
+			}
 		}
 
-		// Skip inclusion preconfirmation txs that are not for the current slot.
-		if tx.Type() == types.InclusionPreconfirmationTxType && common.SlotIndex(tx.Deadline().Uint64()) != slotIndex {
-			continue
-		}
+		// TODO(limechain): other tx types should be stored in separate place or
+		// handled differently
+
 		if !w.pendingTxCache[uint8(slotIndex)][tx.Hash()] {
 			slotTxSnapshot.PendingTxs = append(slotTxSnapshot.PendingTxs, tx)
 			w.pendingTxCache[uint8(slotIndex)][tx.Hash()] = true
@@ -838,7 +849,7 @@ func (w *worker) UpdateTxsInSlotSnapshot(slotIndex uint64, txs []*types.Transact
 	return slotTxSnapshot
 }
 
-// CHANGE(limechain):
+// CHANGE(limechain): resetAllSnapshots resets all slot snapshots.
 func (w *worker) resetAllSnapshots() {
 	w.txSnapshotsMutex.Lock()
 	defer w.txSnapshotsMutex.Unlock()
@@ -862,36 +873,24 @@ func (w *worker) resetAllSnapshots() {
 	for i := 0; i < common.EpochLength; i++ {
 		w.resetSlotSnapshotAndCache(uint64(i))
 	}
-	log.Warn("All snapshot has been reset")
+	log.Warn("All slot snapshots have been reset")
 }
 
-// CHANGE(limechain):
-func (w *worker) resetPastSlotSnapshot(slotIndex uint64) bool {
-	db := w.eth.BlockChain().DB()
-
-	l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(db)
-	if l1GenesisTimestamp == nil {
-		log.Error("Failed to fetch L1 genesis timestamp")
-		return false
-	}
-	currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
-
+// CHANGE(limechain): resetPastSlotSnapshot resets the slot snapshot if prior to the current slot.
+func (w *worker) resetPastSlotSnapshot(slotIndex uint64, currentSlot uint64) bool {
 	if slotIndex < common.SlotIndex(currentSlot) {
-		// Current snapshot is for slot prior current one, reset it
-		// TODO(limechain): make sure executed txs are removed from the tx pool
-		// in the case proposer failed to propose them.
-		w.resetSlotSnapshotAndCache(uint64(slotIndex))
+		w.resetSlotSnapshotAndCache(slotIndex)
 		log.Warn("Past slot snapshot has been reset", "snapshot slot", slotIndex, "current slot", currentSlot)
 		return true
 	}
-
 	return false
 }
 
-func (w *worker) resetSlotSnapshotAndCache(i uint64) {
+// CHANGE(limechain): resetSlotSnapshotAndCache resets the slot snapshot and caches.
+func (w *worker) resetSlotSnapshotAndCache(slotIndex uint64) {
 	db := w.eth.BlockChain().DB()
 
-	rawdb.WriteSlotTxSnapshot(db, uint64(i), &types.SlotTxSnapshot{
+	rawdb.WriteSlotTxSnapshot(db, slotIndex, &types.SlotTxSnapshot{
 		PendingTxs:  []*types.Transaction{},
 		ProposedTxs: []*types.Transaction{},
 		NewTxs:      []*types.Transaction{},
@@ -900,15 +899,15 @@ func (w *worker) resetSlotSnapshotAndCache(i uint64) {
 	})
 
 	if w.pendingTxCache != nil {
-		w.pendingTxCache[uint8(i)] = make(map[common.Hash]bool)
+		w.pendingTxCache[uint8(slotIndex)] = make(map[common.Hash]bool)
 	}
 	if w.proposedTxCache != nil {
-		w.proposedTxCache[uint8(i)] = make(map[common.Hash]bool)
+		w.proposedTxCache[uint8(slotIndex)] = make(map[common.Hash]bool)
 	}
 }
 
-// txSnapshotsLoop polls new txs from the pool and updates the
-// tx snapshots for each slot.
+// txSnapshotsLoop polls new txs from the txpool and updates the
+// the corresponding slot snapshots.
 func (w *worker) txSnapshotsLoop() {
 	defer w.wg.Done()
 
@@ -949,13 +948,12 @@ func (w *worker) txSnapshotsLoop() {
 
 			// Reset all snapshots if the tx pool is empty.
 			if len(w.eth.TxPool().Pending(txpool.PendingFilter{BaseFee: uint256.MustFromBig(txListConfig.BaseFee), OnlyPlainTxs: true})) == 0 {
-				log.Warn("Tx pool is empty, all txs have been executed, reset all snapshots")
 				w.resetAllSnapshots()
 				continue
 			}
 
 			// Loop through each slot starting from the current one
-			// up to the last and update the snapshot (simulate preconf txs and store receipts).
+			// up to the last and update each snapshot (simulate preconf txs and store receipts).
 			for i := uint64(currentSlotIndex); i < uint64(common.EpochLength); i++ {
 				// Initialize the slot snapshot if it does not exist.
 				slotTxSnapshot := rawdb.ReadSlotTxSnapshot(db, i)
@@ -963,7 +961,7 @@ func (w *worker) txSnapshotsLoop() {
 					rawdb.WriteSlotTxSnapshot(db, i, &types.SlotTxSnapshot{})
 				}
 
-				err := w.UpdateTxSnapshotForSlot(
+				err := w.UpdateTxSnapshot(
 					i,
 					txListConfig.Beneficiary,
 					txListConfig.BaseFee,

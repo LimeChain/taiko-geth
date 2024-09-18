@@ -25,20 +25,20 @@ import (
 var (
 	url                = "http://127.0.0.1:28545"
 	chainID            = big.NewInt(167001) // mainnet
-	l1GenesisTimestamp = uint64(1724415819)
+	l1GenesisTimestamp = uint64(1726642054)
 
 	currentSlot, _ = common.CurrentSlotAndEpoch(l1GenesisTimestamp, time.Now().Unix())
 
 	pastSlotDeadline        = new(big.Int).Add(new(big.Int).SetUint64(currentSlot), big.NewInt(-1))
 	currentSlotDeadline     = new(big.Int).Add(new(big.Int).SetUint64(currentSlot), big.NewInt(0))
-	nextSlotDeadline        = new(big.Int).Add(new(big.Int).SetUint64(currentSlot), big.NewInt(1))
+	nextSlotDeadline        = new(big.Int).Add(new(big.Int).SetUint64(currentSlot), big.NewInt(3))
 	notAssignedSlotDeadline = new(big.Int).Add(new(big.Int).SetUint64(currentSlot), big.NewInt(2))
 	nextEpochDeadline       = new(big.Int).Add(new(big.Int).SetUint64(currentSlot), big.NewInt(100))
 
-	gasPriceMultiplier = big.NewInt(1_000_000)
-	defaultValue       = big.NewInt(100_000_000_000) // in wei (1 eth = 1_000_000_000_000_000_000 wei)
-	defaultGas         = uint64(1_000_000)
-	defaultData        = make([]byte, 100_000)
+	gasPriceMultiplier = big.NewInt(10_000)
+	defaultValue       = big.NewInt(1_000_000_000) // in wei (1 eth = 1_000_000_000_000_000_000 wei)
+	defaultGas         = uint64(21_000)
+	defaultData        = make([]byte, 0) // 100_000
 
 	god     = Account{privKey: "bcdf20249abf0ed6d944c0288fad489e33f66b3960d9e6229c1cd214ed3bbe31"} // 0x8943545177806ED17B9F23F0a21ee5948eCaa776
 	alice   = Account{privKey: "39725efee3fb28614de3bacaffe4cc4bd8c436257e2c8bb887c4b5c4be45e76d"} // 0xE25583099BA105D9ec0A67f5Ae86D90e50036425
@@ -49,20 +49,21 @@ var (
 	fred    = Account{privKey: "5d2344259f42259f82d2c140aa66102ba89b57b4883ee441a8b312622bd42491"} // 0x802dCbE1B1A97554B4F50DB5119E37E8e7336417
 	george  = Account{privKey: "3a91003acaf4c21b3953d94fa4a6db694fa69e5242b2e37be05dd82761058899"} // 0x741bFE4802cE1C4b5b00F9Df2F5f179A1C89171A
 
-	accounts = []Account{george}
+	accounts = []Account{bob}
 
 	txsForAccount = func(addr common.Address, nonce uint64) []interface{} {
 		return map[common.Address][]interface{}{
 			*god.Address(): {
-				types.InclusionPreconfirmationTx{Nonce: nonce + 0, To: alice.Address(), Deadline: currentSlotDeadline},
-				types.InclusionPreconfirmationTx{Nonce: nonce + 1, To: bob.Address(), Deadline: currentSlotDeadline},
-				types.InclusionPreconfirmationTx{Nonce: nonce + 2, To: charlie.Address(), Deadline: currentSlotDeadline},
-				types.InclusionPreconfirmationTx{Nonce: nonce + 3, To: dave.Address(), Deadline: currentSlotDeadline},
-				types.InclusionPreconfirmationTx{Nonce: nonce + 4, To: eve.Address(), Deadline: currentSlotDeadline},
-				types.InclusionPreconfirmationTx{Nonce: nonce + 5, To: fred.Address(), Deadline: currentSlotDeadline},
+				types.InclusionPreconfirmationTx{Nonce: nonce + 0, To: alice.Address(), Deadline: nextSlotDeadline},
+				types.InclusionPreconfirmationTx{Nonce: nonce + 1, To: bob.Address(), Deadline: nextSlotDeadline},
+				types.InclusionPreconfirmationTx{Nonce: nonce + 2, To: charlie.Address(), Deadline: nextSlotDeadline},
+				types.InclusionPreconfirmationTx{Nonce: nonce + 3, To: dave.Address(), Deadline: nextSlotDeadline},
+				types.InclusionPreconfirmationTx{Nonce: nonce + 4, To: eve.Address(), Deadline: nextSlotDeadline},
+				types.InclusionPreconfirmationTx{Nonce: nonce + 5, To: fred.Address(), Deadline: nextSlotDeadline},
+				types.InclusionPreconfirmationTx{Nonce: nonce + 6, To: george.Address(), Deadline: nextSlotDeadline},
 			},
 			*alice.Address(): {
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 0, To: alice.Address(), Deadline: currentSlotDeadline},
+				// types.InclusionPreconfirmationTx{Nonce: nonce + 0, To: alice.Address(), Deadline: nextSlotDeadline},
 				// types.InclusionPreconfirmationTx{Nonce: nonce + 1, To: alice.Address(), Deadline: currentSlotDeadline},
 				// types.InclusionPreconfirmationTx{Nonce: nonce + 2, To: alice.Address(), Deadline: currentSlotDeadline},
 				// types.InclusionPreconfirmationTx{Nonce: nonce + 3, To: alice.Address(), Deadline: currentSlotDeadline},
@@ -355,7 +356,7 @@ func main() {
 				if err != nil {
 					log.Fatalf("Failed to send transaction: %v", err)
 				}
-				fmt.Printf("Submitted Tx hash: %s\n", signedTx.Hash())
+				fmt.Printf("Submitted Tx hash: %s slot deadline: %d\n", signedTx.Hash(), signedTx.Deadline().Uint64())
 
 				// Get the tx
 				_, _, err = client.TransactionByHash(context.Background(), signedTx.Hash())

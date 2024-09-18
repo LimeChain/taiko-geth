@@ -1871,11 +1871,11 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction, slotEstLock 
 		return errors.New("can't validate inclusion constraints, L1 genesis timestamp is unknown")
 	}
 	currentSlot, currentEpoch := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
-	log.Warn("WEB: current", "slot", currentSlot, "index", common.SlotIndex(currentSlot))
 
+	earliestAcceptableSlot := currentSlot + 3
 	// Do not accept txs with deadlines that are for a past or current slots, as it is not possible to include them.
 	// The deadline check needs to be done in advance.
-	if tx.Deadline().Uint64() <= currentSlot {
+	if tx.Deadline().Uint64() < earliestAcceptableSlot {
 		return fmt.Errorf("inclusion tx rejected, deadline is for past or current slot [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
 	}
 
@@ -1892,12 +1892,12 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction, slotEstLock 
 	// TODO(limechain): reset previous slot estimates
 	storedSlotEstimates := NewStoredSlotEstimates(db, slotEstLock)
 
-	if tx.Deadline().Uint64() == currentSlot+1 {
+	if tx.Deadline().Uint64() == earliestAcceptableSlot {
 		// There are per slot gas/bytes estimates, which are separate from the actual gas/bytes
 		// in the tx snapshots accessed by the worker
-		slotEstimates := storedSlotEstimates.Read(currentSlot)
+		slotEstimates := storedSlotEstimates.Read(tx.Deadline().Uint64())
 		// Deadline is for the current slot.
-		if assignedToProposeBlock(currentSlot, assignedSlots) {
+		if assignedToProposeBlock(tx.Deadline().Uint64(), assignedSlots) {
 			// Check whether the block space constraints are met (gas and byte estimates).
 			if slotEstimates.GasUsed+tx.Gas() > txListConfig.BlockMaxGasLimit || slotEstimates.BytesLength+tx.Size() > txListConfig.MaxBytesPerTxList {
 				log.Error("inclusion tx rejected, gas or bytes limit reached", "hash", tx.Hash(), "deadline", tx.Deadline().Uint64(), "current slot", currentSlot)
@@ -1907,7 +1907,7 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction, slotEstLock 
 			return fmt.Errorf("inclusion tx rejected, not assigned to propose block [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
 		}
 
-		updateSlotEstimates(storedSlotEstimates, slotEstimates, currentSlot, tx.Gas(), tx.Size())
+		updateSlotEstimates(storedSlotEstimates, slotEstimates, tx.Deadline().Uint64(), tx.Gas(), tx.Size())
 		return nil
 	}
 
@@ -1932,14 +1932,13 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction, slotEstLock 
 	}
 
 	// Initially the worst-case scenario is assumed, where the tx is included in the last possible slot just prior to the deadline.
-	futureSlot := tx.Deadline().Uint64()
-	futureSlotEstimates := storedSlotEstimates.Read(futureSlot)
+	futureSlotEstimates := storedSlotEstimates.Read(tx.Deadline().Uint64())
 	if futureSlotEstimates.GasUsed+tx.Gas() > txListConfig.BlockMaxGasLimit || futureSlotEstimates.BytesLength+tx.Size() > txListConfig.MaxBytesPerTxList {
 		return fmt.Errorf("inclusion tx rejected, gas or bytes limit reached [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
 	}
 	// Update the transaction's gas and byte usage per slot, depending on the latest deadline and assigned slots
 	// and later during execution, update the constraints.
-	updateSlotEstimates(storedSlotEstimates, futureSlotEstimates, futureSlot, tx.Gas(), tx.Size())
+	updateSlotEstimates(storedSlotEstimates, futureSlotEstimates, tx.Deadline().Uint64(), tx.Gas(), tx.Size())
 	return nil
 }
 

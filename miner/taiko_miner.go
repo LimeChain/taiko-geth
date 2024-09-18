@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // PreBuiltTxList is a pre-built transaction list based on the latest chain state,
@@ -30,9 +31,11 @@ func (miner *Miner) SealBlockWith(
 }
 
 // CHANGE(limechain):
-
 // FetchTxList retrieves already pre-built list of txs.
 func (miner *Miner) FetchTxList(slot uint64) ([]*PreBuiltTxList, error) {
+	// TODO(limechain): fetch preconf txs for slot + other txs from the txpool
+
+	log.Warn("Fetching tx list", "slot", slot)
 	db := miner.worker.chain.DB()
 
 	l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(db)
@@ -61,7 +64,7 @@ func (miner *Miner) FetchTxList(slot uint64) ([]*PreBuiltTxList, error) {
 	// 	break
 	// }
 
-	slotTxSnapshot := miner.worker.ProposeTxsFromSlotSnapshot(slot)
+	slotTxSnapshot := miner.worker.ProposeSlotSnapshotTxs(slot)
 	// if len(slotTxSnapshot.NewTxs) == 0 {
 	// break
 	// }

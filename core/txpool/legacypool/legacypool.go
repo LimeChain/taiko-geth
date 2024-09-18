@@ -336,10 +336,16 @@ func (pool *LegacyPool) Init(gasTip uint64, head *types.Header, reserve txpool.A
 }
 
 func (pool *LegacyPool) eventLoop() {
+	defer pool.wg.Done()
+
 	for {
 		select {
+		case <-pool.reorgShutdownCh:
+			return
 		case event := <-pool.invPreconfTxEventCh:
+			pool.mu.Lock()
 			pool.removeTx(event.TxHash, true, true)
+			pool.mu.Unlock()
 		}
 	}
 }

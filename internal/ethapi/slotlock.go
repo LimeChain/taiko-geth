@@ -66,4 +66,5 @@ func (s *StoredSlotEstimates) Write(slot uint64, slotEstimates *types.SlotEstima
 	rawdb.WriteSlotEstimates(s.db, slot, slotEstimates)
 }
 
+// TODO(limechain): implement
 func (s *StoredSlotEstimates) ResetPast() {}

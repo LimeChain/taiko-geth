@@ -27,8 +27,8 @@ import (
 // 2. The total gas used should not exceed the given blockMaxGasLimit
 // 3. The total bytes used should not exceed the given maxBytesPerTxList
 // 4. The total number of transactions lists should not exceed the given maxTransactionsLists
-func (w *worker) UpdateTxSnapshotForSlot(
-	slotIndex uint64,
+func (w *worker) UpdateTxSnapshot(
+	snapshotSlot uint64,
 	beneficiary common.Address,
 	baseFee *big.Int,
 	blockMaxGasLimit uint64,
@@ -37,7 +37,7 @@ func (w *worker) UpdateTxSnapshotForSlot(
 	maxTransactionsLists uint64,
 ) error {
 	// log.Info("Update txs snapshot for slot",
-	// 	"slotIndex", slotIndex,
+	// 	"snapshotSlot", snapshotSlot,
 	// 	"beneficiary", beneficiary,
 	// 	"baseFee", baseFee,
 	// 	"blockMaxGasLimit", blockMaxGasLimit,
@@ -111,7 +111,7 @@ func (w *worker) UpdateTxSnapshotForSlot(
 		}
 
 		// CHANGE(limechain): keep the tx snapshot up to date.
-		slotTxSnapshot := w.UpdateTxsInSlotSnapshot(slotIndex, env.txs, b, env)
+		slotTxSnapshot := w.UpdateSlotSnapshotTxs(snapshotSlot, env.txs, b, env)
 		return slotTxSnapshot, nil
 	}
 
@@ -124,9 +124,9 @@ func (w *worker) UpdateTxSnapshotForSlot(
 
 		// TODO(limechain): remove, just for debugging purposes
 		if slotTxSnapshot != nil && (len(slotTxSnapshot.PendingTxs) != 0 || len(slotTxSnapshot.ProposedTxs) != 0 || len(slotTxSnapshot.NewTxs) != 0) {
-			log.Warn("Tx snapshot pending", "slot", slotIndex, "count", len(slotTxSnapshot.PendingTxs), "txs", slotTxSnapshot.PendingTxs)
-			log.Warn("Tx snapshot proposed", "slot", slotIndex, "count", len(slotTxSnapshot.ProposedTxs), "txs", slotTxSnapshot.ProposedTxs)
-			log.Warn("Tx snapshot new", "slot", slotIndex, "count", len(slotTxSnapshot.NewTxs), "txs", slotTxSnapshot.NewTxs)
+			log.Warn("Tx snapshot pending", "slot", snapshotSlot, "count", len(slotTxSnapshot.PendingTxs), "txs", slotTxSnapshot.PendingTxs)
+			log.Warn("Tx snapshot proposed", "slot", snapshotSlot, "count", len(slotTxSnapshot.ProposedTxs), "txs", slotTxSnapshot.ProposedTxs)
+			log.Warn("Tx snapshot new", "slot", snapshotSlot, "count", len(slotTxSnapshot.NewTxs), "txs", slotTxSnapshot.NewTxs)
 		}
 
 		if len(slotTxSnapshot.PendingTxs) == 0 {
