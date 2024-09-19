@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/slocks"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
@@ -243,11 +244,10 @@ type worker struct {
 	fullTaskHook func()                             // Method to call before pushing the full sealing task.
 	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
 
-	// CHANGE(limechain):
-	// TODO(limechain): refactor locks
-	txSnapshotsMutex sync.RWMutex                   // TODO(limechain): per slot
-	pendingTxCache   map[uint8]map[common.Hash]bool // pending txs for each slot
-	proposedTxCache  map[uint8]map[common.Hash]bool // proposed txs for each slot
+	// CHANGE(limechain): tx snapshots locks per slot and short term pending/proposed txs caches.
+	txSnapshotMu    *slocks.PerSlotLocker
+	pendingTxCache  map[uint64]map[common.Hash]bool
+	proposedTxCache map[uint64]map[common.Hash]bool
 }
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool, invPreconfTxEventCh chan core.InvalidPreconfTxEvent) *worker {
@@ -273,6 +273,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		exitCh:             make(chan struct{}),
 		resubmitIntervalCh: make(chan time.Duration),
 		resubmitAdjustCh:   make(chan *intervalAdjust, resubmitAdjustChanSize),
+		txSnapshotMu:       &slocks.PerSlotLocker{},
 	}
 	// Subscribe for transaction insertion events (whether from network or resurrects)
 	worker.txsSub = eth.TxPool().SubscribeTransactions(worker.txsCh, true)
@@ -727,10 +728,10 @@ func (w *worker) resultLoop() {
 }
 
 // CHANGE(limechain):
-func initCache() map[uint8]map[common.Hash]bool {
-	cache := make(map[uint8]map[common.Hash]bool)
+func initCache() map[uint64]map[common.Hash]bool {
+	cache := make(map[uint64]map[common.Hash]bool)
 	for i := 0; i < common.EpochLength; i++ {
-		cache[uint8(i)] = make(map[common.Hash]bool)
+		cache[uint64(i)] = make(map[common.Hash]bool)
 	}
 	return cache
 }
@@ -743,7 +744,7 @@ func (w *worker) loadPendingInCache(slotIndex uint64, slotTxSnapshot *types.Slot
 	}
 
 	for _, tx := range slotTxSnapshot.PendingTxs {
-		w.pendingTxCache[uint8(slotIndex)][tx.Hash()] = true
+		w.pendingTxCache[(slotIndex)][tx.Hash()] = true
 	}
 }
 
@@ -755,14 +756,14 @@ func (w *worker) loadProposedInCache(slotIndex uint64, slotTxSnapshot *types.Slo
 	}
 
 	for _, tx := range slotTxSnapshot.ProposedTxs {
-		w.proposedTxCache[uint8(slotIndex)][tx.Hash()] = true
+		w.proposedTxCache[slotIndex][tx.Hash()] = true
 	}
 }
 
 // CHANGE(limechain): ProposeTxsFromSlotSnapshot proposes txs from the slot snapshot.
 func (w *worker) ProposeSlotSnapshotTxs(slotIndex uint64) *types.SlotTxSnapshot {
-	w.txSnapshotsMutex.Lock()
-	defer w.txSnapshotsMutex.Unlock()
+	w.txSnapshotMu.Lock(slotIndex)
+	defer w.txSnapshotMu.Unlock(slotIndex)
 
 	db := w.eth.BlockChain().DB()
 
@@ -777,13 +778,13 @@ func (w *worker) ProposeSlotSnapshotTxs(slotIndex uint64) *types.SlotTxSnapshot 
 	// txPoolSnapshot.NewTxs = []*types.Transaction{}
 
 	for _, tx := range slotTxSnapshot.PendingTxs {
-		if !w.proposedTxCache[uint8(slotIndex)][tx.Hash()] {
+		if !w.proposedTxCache[slotIndex][tx.Hash()] {
 			slotTxSnapshot.NewTxs = append(slotTxSnapshot.NewTxs, tx)
 			slotTxSnapshot.ProposedTxs = append(slotTxSnapshot.ProposedTxs, tx)
-			if w.proposedTxCache[uint8(slotIndex)] != nil {
-				w.proposedTxCache[uint8(slotIndex)][tx.Hash()] = true
+			if w.proposedTxCache[slotIndex] != nil {
+				w.proposedTxCache[slotIndex][tx.Hash()] = true
 			} else {
-				w.proposedTxCache[uint8(slotIndex)] = map[common.Hash]bool{tx.Hash(): true}
+				w.proposedTxCache[slotIndex] = map[common.Hash]bool{tx.Hash(): true}
 			}
 		}
 	}
@@ -794,9 +795,9 @@ func (w *worker) ProposeSlotSnapshotTxs(slotIndex uint64) *types.SlotTxSnapshot 
 }
 
 // CHANGE(limechain): UpdateSlotSnapshotTxs updates the slot snapshot with the new txs.
-func (w *worker) UpdateSlotSnapshotTxs(slotIndex uint64, txs []*types.Transaction, b []byte, env *environment) *types.SlotTxSnapshot {
-	w.txSnapshotsMutex.Lock()
-	defer w.txSnapshotsMutex.Unlock()
+func (w *worker) UpdateSnapshotTxs(slotIndex uint64, txs []*types.Transaction, b []byte, env *environment) *types.SlotTxSnapshot {
+	w.txSnapshotMu.Lock(slotIndex)
+	defer w.txSnapshotMu.Unlock(slotIndex)
 
 	db := w.eth.BlockChain().DB()
 
@@ -809,7 +810,7 @@ func (w *worker) UpdateSlotSnapshotTxs(slotIndex uint64, txs []*types.Transactio
 
 	slotTxSnapshot := rawdb.ReadSlotTxSnapshot(db, slotIndex)
 
-	if w.resetPastSlotSnapshot(slotIndex, currentSlot) {
+	if w.resetPastTxSnapshot(slotIndex, currentSlot) {
 		// TODO(limechain): slot snapshot is reset, return empty snapshot
 		return slotTxSnapshot
 	}
@@ -836,9 +837,9 @@ func (w *worker) UpdateSlotSnapshotTxs(slotIndex uint64, txs []*types.Transactio
 		// TODO(limechain): other tx types should be stored in separate place or
 		// handled differently
 
-		if !w.pendingTxCache[uint8(slotIndex)][tx.Hash()] {
+		if !w.pendingTxCache[slotIndex][tx.Hash()] {
 			slotTxSnapshot.PendingTxs = append(slotTxSnapshot.PendingTxs, tx)
-			w.pendingTxCache[uint8(slotIndex)][tx.Hash()] = true
+			w.pendingTxCache[slotIndex][tx.Hash()] = true
 		}
 	}
 
@@ -849,20 +850,16 @@ func (w *worker) UpdateSlotSnapshotTxs(slotIndex uint64, txs []*types.Transactio
 	return slotTxSnapshot
 }
 
-// CHANGE(limechain): resetAllSnapshots resets all slot snapshots.
-func (w *worker) resetAllSnapshots() {
-	w.txSnapshotsMutex.Lock()
-	defer w.txSnapshotsMutex.Unlock()
-
+// CHANGE(limechain): resetAllSnapshots resets all tx snapshots.
+func (w *worker) resetAllTxSnapshots() {
 	// newPendingTxs := []*types.Transaction{}
 	// // Short lived cache to speed up the lookup
 	// w.loadProposedInCache(slotIndex, slotTxSnapshot)
 	// for _, tx := range slotTxSnapshot.PendingTxs {
-	// 	if !w.proposedTxCache[uint8(slotIndex)][tx.Hash()] {
+	// 	if !w.proposedTxCache[slotIndex][tx.Hash()] {
 	// 		newPendingTxs = append(newPendingTxs, tx)
 	// 	}
 	// }
-	// // TODO(limechain):
 	// // Handle the case where the 'driver' has failed and the 'proposer'
 	// // has continued working, new pending transactions were added after
 	// // that some txs have been proposed, and the 'driver' has been restarted.
@@ -871,15 +868,23 @@ func (w *worker) resetAllSnapshots() {
 	// }
 
 	for i := 0; i < common.EpochLength; i++ {
-		w.resetSlotSnapshotAndCache(uint64(i))
+		w.resetTxSnapshot(uint64(i))
 	}
-	log.Warn("All slot snapshots have been reset")
+	log.Warn("All slot tx snapshots have been reset")
 }
 
-// CHANGE(limechain): resetPastSlotSnapshot resets the slot snapshot if prior to the current slot.
-func (w *worker) resetPastSlotSnapshot(slotIndex uint64, currentSlot uint64) bool {
+// CHANGE(limechain): resetTxSnapshot resets tx snapshot for specific slot.
+func (w *worker) resetTxSnapshot(slotIndex uint64) {
+	w.txSnapshotMu.Lock(slotIndex)
+	defer w.txSnapshotMu.Unlock(slotIndex)
+
+	w.resetTxSnapshotAndCache(slotIndex)
+}
+
+// CHANGE(limechain): resetPastSlotSnapshot resets the tx snapshot if the slot is in the past.
+func (w *worker) resetPastTxSnapshot(slotIndex uint64, currentSlot uint64) bool {
 	if slotIndex < common.SlotIndex(currentSlot) {
-		w.resetSlotSnapshotAndCache(slotIndex)
+		w.resetTxSnapshotAndCache(slotIndex)
 		log.Warn("Past slot snapshot has been reset", "snapshot slot", slotIndex, "current slot", currentSlot)
 		return true
 	}
@@ -887,7 +892,7 @@ func (w *worker) resetPastSlotSnapshot(slotIndex uint64, currentSlot uint64) boo
 }
 
 // CHANGE(limechain): resetSlotSnapshotAndCache resets the slot snapshot and caches.
-func (w *worker) resetSlotSnapshotAndCache(slotIndex uint64) {
+func (w *worker) resetTxSnapshotAndCache(slotIndex uint64) {
 	db := w.eth.BlockChain().DB()
 
 	rawdb.WriteSlotTxSnapshot(db, slotIndex, &types.SlotTxSnapshot{
@@ -899,10 +904,10 @@ func (w *worker) resetSlotSnapshotAndCache(slotIndex uint64) {
 	})
 
 	if w.pendingTxCache != nil {
-		w.pendingTxCache[uint8(slotIndex)] = make(map[common.Hash]bool)
+		w.pendingTxCache[slotIndex] = make(map[common.Hash]bool)
 	}
 	if w.proposedTxCache != nil {
-		w.proposedTxCache[uint8(slotIndex)] = make(map[common.Hash]bool)
+		w.proposedTxCache[slotIndex] = make(map[common.Hash]bool)
 	}
 }
 
@@ -948,7 +953,7 @@ func (w *worker) txSnapshotsLoop() {
 
 			// Reset all snapshots if the tx pool is empty.
 			if len(w.eth.TxPool().Pending(txpool.PendingFilter{BaseFee: uint256.MustFromBig(txListConfig.BaseFee), OnlyPlainTxs: true})) == 0 {
-				w.resetAllSnapshots()
+				w.resetAllTxSnapshots()
 				continue
 			}
 

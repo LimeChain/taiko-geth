@@ -110,8 +110,8 @@ func (w *worker) UpdateTxSnapshot(
 			return nil, err
 		}
 
-		// CHANGE(limechain): keep the tx snapshot up to date.
-		slotTxSnapshot := w.UpdateSlotSnapshotTxs(snapshotSlot, env.txs, b, env)
+		// CHANGE(limechain): keeps tx snapshots up to date.
+		slotTxSnapshot := w.UpdateSnapshotTxs(snapshotSlot, env.txs, b, env)
 		return slotTxSnapshot, nil
 	}
 

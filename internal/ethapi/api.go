@@ -32,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/common/slocks"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core"
@@ -1566,14 +1567,14 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 
 // TransactionAPI exposes methods for reading and creating transaction data.
 type TransactionAPI struct {
-	b           Backend
-	nonceLock   *AddrLocker
-	slotEstLock *SlotEstimatesLocker
-	signer      types.Signer
+	b         Backend
+	nonceLock *AddrLocker
+	slotEstMu *slocks.PerSlotLocker
+	signer    types.Signer
 }
 
 // NewTransactionAPI creates a new RPC service with methods for interacting with transactions.
-func NewTransactionAPI(b Backend, nonceLock *AddrLocker, slotEstLock *SlotEstimatesLocker) *TransactionAPI {
+func NewTransactionAPI(b Backend, nonceLock *AddrLocker, slotEstLock *slocks.PerSlotLocker) *TransactionAPI {
 	// The signer used by the API should always be the 'latest' known one because we expect
 	// signers to be backwards-compatible with old transactions.
 	signer := types.LatestSigner(b.ChainConfig())
@@ -1822,7 +1823,7 @@ func (s *TransactionAPI) sign(addr common.Address, tx *types.Transaction) (*type
 }
 
 // SubmitTransaction is a helper function that submits tx to txPool and logs a message.
-func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction, slotEstLock *SlotEstimatesLocker) (common.Hash, error) {
+func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction, slotEstLock *slocks.PerSlotLocker) (common.Hash, error) {
 	// If the transaction fee cap is already specified, ensure the
 	// fee of the given transaction is _reasonable_.
 	if err := checkTxFee(tx.GasPrice(), tx.Gas(), b.RPCTxFeeCap()); err != nil {
@@ -1863,14 +1864,14 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction, sl
 
 // CHANGE(limechain):
 
-func validateInclusionConstraints(b Backend, tx *types.Transaction, slotEstLock *SlotEstimatesLocker) error {
+func validateInclusionConstraints(b Backend, tx *types.Transaction, slotEstLock *slocks.PerSlotLocker) error {
 	db := b.ChainDb()
 
 	l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(db)
 	if l1GenesisTimestamp == nil {
 		return errors.New("can't validate inclusion constraints, L1 genesis timestamp is unknown")
 	}
-	currentSlot, currentEpoch := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
+	currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
 
 	earliestAcceptableSlot := currentSlot + 3
 	// Do not accept txs with deadlines that are for a past or current slots, as it is not possible to include them.
@@ -1911,11 +1912,12 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction, slotEstLock 
 		return nil
 	}
 
-	// Deadline is for a future slot in the next epoch, so the slot assignment is unknown.
-	firstSlotFromNextEpoch := currentEpoch*uint64(common.EpochLength) + uint64(common.EpochLength)
-	if tx.Deadline().Uint64() > firstSlotFromNextEpoch {
-		return fmt.Errorf("inclusion tx rejected, too far in the future [hash %s deadline %d current epoch %d]", tx.Hash(), tx.Deadline().Uint64(), currentEpoch)
-	}
+	// TODO(limechain): check how many epochs in advance we know the slots, and then adjust the logic.
+	// Deadline is for a future slot in future epochs, so the slot assignment is unknown.
+	// firstSlotFromNextEpoch := currentEpoch*uint64(common.EpochLength) + uint64(common.EpochLength)
+	// if tx.Deadline().Uint64() > firstSlotFromNextEpoch {
+	// 	return fmt.Errorf("inclusion tx rejected, too far in the future [hash %s deadline %d current epoch %d]", tx.Hash(), tx.Deadline().Uint64(), currentEpoch)
+	// }
 
 	// Deadline is for a future slot in the current epoch, and the slot assignment is known.
 	lookup := assignedSlotsLookup(assignedSlots)
@@ -1998,7 +2000,7 @@ func (s *TransactionAPI) SendTransaction(ctx context.Context, args TransactionAr
 	if err != nil {
 		return common.Hash{}, err
 	}
-	return SubmitTransaction(ctx, s.b, signed, s.slotEstLock)
+	return SubmitTransaction(ctx, s.b, signed, s.slotEstMu)
 }
 
 // FillTransaction fills the defaults (nonce, gas, gasPrice or 1559 fields)
@@ -2027,7 +2029,7 @@ func (s *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil.B
 	if err := tx.UnmarshalBinary(input); err != nil {
 		return common.Hash{}, err
 	}
-	return SubmitTransaction(ctx, s.b, tx, s.slotEstLock)
+	return SubmitTransaction(ctx, s.b, tx, s.slotEstMu)
 }
 
 // Sign calculates an ECDSA signature for:

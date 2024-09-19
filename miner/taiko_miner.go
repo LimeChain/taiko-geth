@@ -74,7 +74,7 @@ func (miner *Miner) FetchTxList(slot uint64) ([]*PreBuiltTxList, error) {
 	totalBytes += slotTxSnapshot.BytesLength
 	// }
 
-	// TODO(limechain): refactor to support multiple tx lists
+	// TODO(limechain): support multiple tx lists
 	txList := &PreBuiltTxList{
 		TxList:           txs,
 		EstimatedGasUsed: totalGasUsed,

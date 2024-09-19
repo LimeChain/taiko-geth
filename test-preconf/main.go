@@ -49,7 +49,7 @@ var (
 	fred    = Account{privKey: "5d2344259f42259f82d2c140aa66102ba89b57b4883ee441a8b312622bd42491"} // 0x802dCbE1B1A97554B4F50DB5119E37E8e7336417
 	george  = Account{privKey: "3a91003acaf4c21b3953d94fa4a6db694fa69e5242b2e37be05dd82761058899"} // 0x741bFE4802cE1C4b5b00F9Df2F5f179A1C89171A
 
-	accounts = []Account{bob}
+	accounts = []Account{alice}
 
 	txsForAccount = func(addr common.Address, nonce uint64) []interface{} {
 		return map[common.Address][]interface{}{
@@ -63,7 +63,7 @@ var (
 				types.InclusionPreconfirmationTx{Nonce: nonce + 6, To: george.Address(), Deadline: nextSlotDeadline},
 			},
 			*alice.Address(): {
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 0, To: alice.Address(), Deadline: nextSlotDeadline},
+				types.InclusionPreconfirmationTx{Nonce: nonce + 0, To: alice.Address(), Deadline: nextSlotDeadline},
 				// types.InclusionPreconfirmationTx{Nonce: nonce + 1, To: alice.Address(), Deadline: currentSlotDeadline},
 				// types.InclusionPreconfirmationTx{Nonce: nonce + 2, To: alice.Address(), Deadline: currentSlotDeadline},
 				// types.InclusionPreconfirmationTx{Nonce: nonce + 3, To: alice.Address(), Deadline: currentSlotDeadline},

@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/common/slocks"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
@@ -1876,7 +1877,7 @@ func TestRPCGetTransactionReceipt(t *testing.T) {
 
 	var (
 		backend, txHashes = setupReceiptBackend(t, 6)
-		api               = NewTransactionAPI(backend, new(AddrLocker), new(SlotEstimatesLocker))
+		api               = NewTransactionAPI(backend, new(AddrLocker), new(slocks.PerSlotLocker))
 	)
 
 	var testSuite = []struct {

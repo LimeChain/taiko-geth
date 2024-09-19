@@ -9,11 +9,11 @@ import (
 // CHANGE(limechain):
 
 var (
-	l1GenesisTimestampKey = []byte("L1GenesisTimestamp")
+	L1GenesisTimestampKey = []byte("L1GenesisTimestamp")
 )
 
 func ReadL1GenesisTimestamp(db ethdb.Database) *uint64 {
-	data, err := db.Get(l1GenesisTimestampKey)
+	data, err := db.Get(L1GenesisTimestampKey)
 	if err != nil {
 		return nil
 	}
@@ -36,7 +36,7 @@ func WriteL1GenesisTimestamp(db ethdb.Database, timestamp uint64) {
 		log.Crit("Failed to RLP encode L1GenesisTimestamp", "err", err)
 	}
 
-	if err := db.Put(l1GenesisTimestampKey, data); err != nil {
+	if err := db.Put(L1GenesisTimestampKey, data); err != nil {
 		log.Crit("Failed to store L1GenesisTimestamp", "err", err)
 	}
 }
