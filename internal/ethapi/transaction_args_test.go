@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/common/slocks"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/bloombits"
@@ -290,6 +291,11 @@ func newBackendMock() *backendMock {
 		},
 		config: config,
 	}
+}
+
+// CHANGE(limechain):
+func (b backendMock) SlotEstLock() *slocks.PerSlotLocker {
+	return &slocks.PerSlotLocker{}
 }
 
 func (b *backendMock) setFork(fork string) error {

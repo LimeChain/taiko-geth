@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/slocks"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
@@ -183,7 +182,6 @@ type worker struct {
 
 	// Feeds
 	pendingLogsFeed event.Feed
-	preconfTxFeed   event.Feed
 
 	// Subscriptions
 	mux          *event.TypeMux
@@ -244,13 +242,11 @@ type worker struct {
 	fullTaskHook func()                             // Method to call before pushing the full sealing task.
 	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
 
-	// CHANGE(limechain): tx snapshots locks per slot and short term pending/proposed txs caches.
-	txSnapshotMu    *slocks.PerSlotLocker
-	pendingTxCache  map[uint64]map[common.Hash]bool
-	proposedTxCache map[uint64]map[common.Hash]bool
+	// CHANGE(limechain):
+	txSnapshotsBuilder *txSnapshotsBuilder
 }
 
-func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool, invPreconfTxEventCh chan core.InvalidPreconfTxEvent) *worker {
+func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
 	worker := &worker{
 		config:             config,
 		chainConfig:        chainConfig,
@@ -273,14 +269,16 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		exitCh:             make(chan struct{}),
 		resubmitIntervalCh: make(chan time.Duration),
 		resubmitAdjustCh:   make(chan *intervalAdjust, resubmitAdjustChanSize),
-		txSnapshotMu:       &slocks.PerSlotLocker{},
 	}
 	// Subscribe for transaction insertion events (whether from network or resurrects)
 	worker.txsSub = eth.TxPool().SubscribeTransactions(worker.txsCh, true)
 	// Subscribe events for blockchain
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
 
-	worker.preconfTxFeed.Subscribe(invPreconfTxEventCh)
+	// CHANGE(limechain):
+	db := worker.eth.BlockChain().DB()
+	invPreconfTxEventCh := worker.eth.BlockChain().InvPreconfTxCh()
+	worker.txSnapshotsBuilder = newTxSnapshotsBuilder(db, invPreconfTxEventCh)
 
 	// Sanitize recommit interval if the user-specified one is too short.
 	recommit := worker.config.Recommit
@@ -313,6 +311,76 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		worker.startCh <- struct{}{}
 	}
 	return worker
+}
+
+// CHANGE(limechain):
+// txSnapshotsLoop polls new txs from the txpool and updates
+// the corresponding snapshots.
+func (w *worker) txSnapshotsLoop() {
+	defer w.wg.Done()
+
+	for {
+		select {
+		case <-w.exitCh:
+			return
+		default:
+			time.Sleep(1 * time.Second)
+
+			// Fetch tx list configuration to use for tx snapshot updates.
+			txListConfig := rawdb.ReadTxListConfig(w.txSnapshotsBuilder.db)
+			if txListConfig == nil {
+				log.Error("Failed to fetch tx list config")
+				continue
+			}
+
+			// Fetch L1 genesis timestamp to calculate the current slot.
+			l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(w.txSnapshotsBuilder.db)
+			if l1GenesisTimestamp == nil {
+				log.Error("Failed to fetch L1 genesis timestamp")
+				continue
+			}
+			currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
+			earliestAcceptableSlot := currentSlot + common.SlotsOffsetInAdvance
+			slotIndex := common.SlotIndex(earliestAcceptableSlot)
+
+			log.Info(
+				"Snapshots update loop started",
+				"current slot", earliestAcceptableSlot,
+				"slot index", slotIndex,
+				"beneficiary", txListConfig.Beneficiary,
+				"base fee", txListConfig.BaseFee,
+				"block max gas limit", txListConfig.BlockMaxGasLimit,
+				"max bytes per tx list", txListConfig.MaxBytesPerTxList,
+			)
+
+			// Reset all snapshots if the tx pool is empty.
+			if len(w.eth.TxPool().Pending(txpool.PendingFilter{BaseFee: uint256.MustFromBig(txListConfig.BaseFee), OnlyPlainTxs: true})) == 0 {
+				w.txSnapshotsBuilder.resetAllTxSnapshots()
+				continue
+			}
+
+			// Loop through each slot starting from the current one
+			// up to the last and update each snapshot (simulate preconf txs and store receipts).
+			for i := uint64(slotIndex); i < uint64(common.EpochLength); i++ {
+				// Initialize the slot snapshot if it does not exist.
+				w.txSnapshotsBuilder.initTxSlotSnapshot(i)
+
+				err := w.UpdateTxSnapshots(
+					i,
+					txListConfig.Beneficiary,
+					txListConfig.BaseFee,
+					txListConfig.BlockMaxGasLimit,
+					txListConfig.MaxBytesPerTxList,
+					txListConfig.Locals,
+					txListConfig.MaxTransactionsLists,
+				)
+				if err != nil {
+					log.Error("Tx snapshot update failed", "slot index", i, "error", err)
+					continue
+				}
+			}
+		}
+	}
 }
 
 // setEtherbase sets the etherbase used to initialize the block coinbase field.
@@ -727,263 +795,6 @@ func (w *worker) resultLoop() {
 	}
 }
 
-// CHANGE(limechain):
-func initCache() map[uint64]map[common.Hash]bool {
-	cache := make(map[uint64]map[common.Hash]bool)
-	for i := 0; i < common.EpochLength; i++ {
-		cache[uint64(i)] = make(map[common.Hash]bool)
-	}
-	return cache
-}
-
-// CHANGE(limechain):
-func (w *worker) loadPendingInCache(slotIndex uint64, slotTxSnapshot *types.SlotTxSnapshot) {
-	if (slotTxSnapshot == &types.SlotTxSnapshot{}) || w.pendingTxCache == nil {
-		w.pendingTxCache = initCache()
-		return
-	}
-
-	for _, tx := range slotTxSnapshot.PendingTxs {
-		w.pendingTxCache[(slotIndex)][tx.Hash()] = true
-	}
-}
-
-// CHANGE(limechain):
-func (w *worker) loadProposedInCache(slotIndex uint64, slotTxSnapshot *types.SlotTxSnapshot) {
-	if (slotTxSnapshot == &types.SlotTxSnapshot{}) || w.proposedTxCache == nil {
-		w.proposedTxCache = initCache()
-		return
-	}
-
-	for _, tx := range slotTxSnapshot.ProposedTxs {
-		w.proposedTxCache[slotIndex][tx.Hash()] = true
-	}
-}
-
-// CHANGE(limechain): ProposeTxsFromSlotSnapshot proposes txs from the slot snapshot.
-func (w *worker) ProposeSlotSnapshotTxs(slotIndex uint64) *types.SlotTxSnapshot {
-	w.txSnapshotMu.Lock(slotIndex)
-	defer w.txSnapshotMu.Unlock(slotIndex)
-
-	db := w.eth.BlockChain().DB()
-
-	slotTxSnapshot := rawdb.ReadSlotTxSnapshot(db, slotIndex)
-
-	// Short lived cache to speed up the lookup
-	w.loadProposedInCache(slotIndex, slotTxSnapshot)
-
-	// Do not reset the 'NewTxs' field to handle the case of 'driver' failures.
-	// Each 'propose' call will accumulate until the 'driver' finally executes
-	// and resets the state.
-	// txPoolSnapshot.NewTxs = []*types.Transaction{}
-
-	for _, tx := range slotTxSnapshot.PendingTxs {
-		if !w.proposedTxCache[slotIndex][tx.Hash()] {
-			slotTxSnapshot.NewTxs = append(slotTxSnapshot.NewTxs, tx)
-			slotTxSnapshot.ProposedTxs = append(slotTxSnapshot.ProposedTxs, tx)
-			if w.proposedTxCache[slotIndex] != nil {
-				w.proposedTxCache[slotIndex][tx.Hash()] = true
-			} else {
-				w.proposedTxCache[slotIndex] = map[common.Hash]bool{tx.Hash(): true}
-			}
-		}
-	}
-
-	rawdb.WriteSlotTxSnapshot(db, slotIndex, slotTxSnapshot)
-
-	return slotTxSnapshot
-}
-
-// CHANGE(limechain): UpdateSlotSnapshotTxs updates the slot snapshot with the new txs.
-func (w *worker) UpdateSnapshotTxs(slotIndex uint64, txs []*types.Transaction, b []byte, env *environment) *types.SlotTxSnapshot {
-	w.txSnapshotMu.Lock(slotIndex)
-	defer w.txSnapshotMu.Unlock(slotIndex)
-
-	db := w.eth.BlockChain().DB()
-
-	l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(db)
-	if l1GenesisTimestamp == nil {
-		log.Error("Failed to fetch L1 genesis timestamp")
-		return nil
-	}
-	currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
-
-	slotTxSnapshot := rawdb.ReadSlotTxSnapshot(db, slotIndex)
-
-	if w.resetPastTxSnapshot(slotIndex, currentSlot) {
-		// TODO(limechain): slot snapshot is reset, return empty snapshot
-		return slotTxSnapshot
-	}
-
-	// Short lived cache to speed up the lookup
-	w.loadPendingInCache(slotIndex, slotTxSnapshot)
-
-	for _, tx := range txs {
-		if tx.Type() == types.InclusionPreconfirmationTxType {
-			// Remove preconfirmation txs with slot deadlines that have already
-			// passed.
-			if tx.Deadline().Uint64() < currentSlot {
-				w.preconfTxFeed.Send(core.InvalidPreconfTxEvent{TxHash: tx.Hash()})
-				continue
-			}
-
-			// Skip inclusion preconfirmation txs that are not for the slot
-			// we are currently updating.
-			if common.SlotIndex(tx.Deadline().Uint64()) != slotIndex {
-				continue
-			}
-		}
-
-		// TODO(limechain): other tx types should be stored in separate place or
-		// handled differently
-
-		if !w.pendingTxCache[slotIndex][tx.Hash()] {
-			slotTxSnapshot.PendingTxs = append(slotTxSnapshot.PendingTxs, tx)
-			w.pendingTxCache[slotIndex][tx.Hash()] = true
-		}
-	}
-
-	slotTxSnapshot.GasUsed = env.header.GasLimit - env.gasPool.Gas()
-	slotTxSnapshot.BytesLength = uint64(len(b))
-	rawdb.WriteSlotTxSnapshot(db, slotIndex, slotTxSnapshot)
-
-	return slotTxSnapshot
-}
-
-// CHANGE(limechain): resetAllSnapshots resets all tx snapshots.
-func (w *worker) resetAllTxSnapshots() {
-	// newPendingTxs := []*types.Transaction{}
-	// // Short lived cache to speed up the lookup
-	// w.loadProposedInCache(slotIndex, slotTxSnapshot)
-	// for _, tx := range slotTxSnapshot.PendingTxs {
-	// 	if !w.proposedTxCache[slotIndex][tx.Hash()] {
-	// 		newPendingTxs = append(newPendingTxs, tx)
-	// 	}
-	// }
-	// // Handle the case where the 'driver' has failed and the 'proposer'
-	// // has continued working, new pending transactions were added after
-	// // that some txs have been proposed, and the 'driver' has been restarted.
-	// if len(newPendingTxs) > 0 {
-	// 	log.Error("There are new pending txs not in proposed", "txs", newPendingTxs)
-	// }
-
-	for i := 0; i < common.EpochLength; i++ {
-		w.resetTxSnapshot(uint64(i))
-	}
-	log.Warn("All slot tx snapshots have been reset")
-}
-
-// CHANGE(limechain): resetTxSnapshot resets tx snapshot for specific slot.
-func (w *worker) resetTxSnapshot(slotIndex uint64) {
-	w.txSnapshotMu.Lock(slotIndex)
-	defer w.txSnapshotMu.Unlock(slotIndex)
-
-	w.resetTxSnapshotAndCache(slotIndex)
-}
-
-// CHANGE(limechain): resetPastSlotSnapshot resets the tx snapshot if the slot is in the past.
-func (w *worker) resetPastTxSnapshot(slotIndex uint64, currentSlot uint64) bool {
-	if slotIndex < common.SlotIndex(currentSlot) {
-		w.resetTxSnapshotAndCache(slotIndex)
-		log.Warn("Past slot snapshot has been reset", "snapshot slot", slotIndex, "current slot", currentSlot)
-		return true
-	}
-	return false
-}
-
-// CHANGE(limechain): resetSlotSnapshotAndCache resets the slot snapshot and caches.
-func (w *worker) resetTxSnapshotAndCache(slotIndex uint64) {
-	db := w.eth.BlockChain().DB()
-
-	rawdb.WriteSlotTxSnapshot(db, slotIndex, &types.SlotTxSnapshot{
-		PendingTxs:  []*types.Transaction{},
-		ProposedTxs: []*types.Transaction{},
-		NewTxs:      []*types.Transaction{},
-		GasUsed:     0,
-		BytesLength: 0,
-	})
-
-	if w.pendingTxCache != nil {
-		w.pendingTxCache[slotIndex] = make(map[common.Hash]bool)
-	}
-	if w.proposedTxCache != nil {
-		w.proposedTxCache[slotIndex] = make(map[common.Hash]bool)
-	}
-}
-
-// txSnapshotsLoop polls new txs from the txpool and updates the
-// the corresponding slot snapshots.
-func (w *worker) txSnapshotsLoop() {
-	defer w.wg.Done()
-
-	for {
-		select {
-		case <-w.exitCh:
-			return
-		default:
-			time.Sleep(1 * time.Second)
-
-			db := w.eth.BlockChain().DB()
-
-			// Fetch tx list configuration to use for tx snapshot updates.
-			txListConfig := rawdb.ReadTxListConfig(db)
-			if txListConfig == nil {
-				log.Error("Failed to fetch tx list config")
-				continue
-			}
-
-			// Fetch L1 genesis timestamp to calculate the current slot.
-			l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(db)
-			if l1GenesisTimestamp == nil {
-				log.Error("Failed to fetch L1 genesis timestamp")
-				continue
-			}
-			currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
-			currentSlotIndex := common.SlotIndex(currentSlot)
-
-			log.Info(
-				"Snapshots update loop started",
-				"current slot", currentSlot,
-				"slot index", currentSlotIndex,
-				"beneficiary", txListConfig.Beneficiary,
-				"base fee", txListConfig.BaseFee,
-				"block max gas limit", txListConfig.BlockMaxGasLimit,
-				"max bytes per tx list", txListConfig.MaxBytesPerTxList,
-			)
-
-			// Reset all snapshots if the tx pool is empty.
-			if len(w.eth.TxPool().Pending(txpool.PendingFilter{BaseFee: uint256.MustFromBig(txListConfig.BaseFee), OnlyPlainTxs: true})) == 0 {
-				w.resetAllTxSnapshots()
-				continue
-			}
-
-			// Loop through each slot starting from the current one
-			// up to the last and update each snapshot (simulate preconf txs and store receipts).
-			for i := uint64(currentSlotIndex); i < uint64(common.EpochLength); i++ {
-				// Initialize the slot snapshot if it does not exist.
-				slotTxSnapshot := rawdb.ReadSlotTxSnapshot(db, i)
-				if slotTxSnapshot == nil {
-					rawdb.WriteSlotTxSnapshot(db, i, &types.SlotTxSnapshot{})
-				}
-
-				err := w.UpdateTxSnapshot(
-					i,
-					txListConfig.Beneficiary,
-					txListConfig.BaseFee,
-					txListConfig.BlockMaxGasLimit,
-					txListConfig.MaxBytesPerTxList,
-					txListConfig.Locals,
-					txListConfig.MaxTransactionsLists,
-				)
-				if err != nil {
-					log.Error("Tx snapshot update failed", "slot index", i, "error", err)
-					continue
-				}
-			}
-		}
-	}
-}
-
 // makeEnv creates a new environment for the sealing block.
 func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase common.Address) (*environment, error) {
 	// Retrieve the parent state to execute on top and start a prefetcher for
@@ -1036,7 +847,6 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 	// CHANGE(limechain):
 	// Store preconf receipt under the tx hash for later retrieval
 	// without having canonical block data available.
-	db := w.eth.BlockChain().DB()
 	if tx.Type() == types.InclusionPreconfirmationTxType {
 		signer := types.MakeSigner(w.chainConfig, receipt.BlockNumber, env.header.Time)
 		from, _ := types.Sender(signer, tx)
@@ -1044,7 +854,7 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 		if head := w.chain.CurrentHeader(); head != nil && head.BaseFee != nil {
 			receipt.EffectiveGasPrice = tx.EffectiveGasTipValue(head.BaseFee)
 		}
-		rawdb.WritePreconfReceipt(db, receipt, &from, to)
+		rawdb.WritePreconfReceipt(w.txSnapshotsBuilder.db, receipt, &from, to)
 		// log.Info("Store inclusion preconfirmation tx receipt", "index", receipt.TransactionIndex, "hash", tx.Hash().String(), "from", from.String(), "to", to.String())
 	}
 

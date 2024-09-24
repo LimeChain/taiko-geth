@@ -117,6 +117,9 @@ type BlockChain interface {
 
 	// StateAt returns a state database for a given root hash (generally the head).
 	StateAt(root common.Hash) (*state.StateDB, error)
+
+	// CHANGE(limechain):
+	InvPreconfTxCh() chan core.InvalidPreconfTxEvent
 }
 
 // Config are the configuration parameters of the transaction pool.
@@ -242,27 +245,28 @@ type txpoolResetRequest struct {
 
 // New creates a new transaction pool to gather, sort and filter inbound
 // transactions from the network.
-func New(config Config, chain BlockChain, invPreconfTxEventCh chan core.InvalidPreconfTxEvent) *LegacyPool {
+func New(config Config, chain BlockChain) *LegacyPool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
 
 	// Create the transaction pool with its initial settings
 	pool := &LegacyPool{
-		config:              config,
-		chain:               chain,
-		chainconfig:         chain.Config(),
-		signer:              types.LatestSigner(chain.Config()),
-		pending:             make(map[common.Address]*list),
-		queue:               make(map[common.Address]*list),
-		beats:               make(map[common.Address]time.Time),
-		all:                 newLookup(),
-		invPreconfTxEventCh: invPreconfTxEventCh,
-		reqResetCh:          make(chan *txpoolResetRequest),
-		reqPromoteCh:        make(chan *accountSet),
-		queueTxEventCh:      make(chan *types.Transaction),
-		reorgDoneCh:         make(chan chan struct{}),
-		reorgShutdownCh:     make(chan struct{}),
-		initDoneCh:          make(chan struct{}),
+		config:          config,
+		chain:           chain,
+		chainconfig:     chain.Config(),
+		signer:          types.LatestSigner(chain.Config()),
+		pending:         make(map[common.Address]*list),
+		queue:           make(map[common.Address]*list),
+		beats:           make(map[common.Address]time.Time),
+		all:             newLookup(),
+		reqResetCh:      make(chan *txpoolResetRequest),
+		reqPromoteCh:    make(chan *accountSet),
+		queueTxEventCh:  make(chan *types.Transaction),
+		reorgDoneCh:     make(chan chan struct{}),
+		reorgShutdownCh: make(chan struct{}),
+		initDoneCh:      make(chan struct{}),
+		// CHANGE(limechain):
+		invPreconfTxEventCh: chain.InvPreconfTxCh(),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -343,6 +347,7 @@ func (pool *LegacyPool) eventLoop() {
 		case <-pool.reorgShutdownCh:
 			return
 		case event := <-pool.invPreconfTxEventCh:
+			log.Error("Invalid preconf tx received", "tx", event.TxHash.String())
 			pool.mu.Lock()
 			pool.removeTx(event.TxHash, true, true)
 			pool.mu.Unlock()

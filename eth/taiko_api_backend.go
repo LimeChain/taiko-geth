@@ -78,8 +78,8 @@ func NewTaikoAuthAPIBackend(eth *Ethereum) *TaikoAuthAPIBackend {
 }
 
 // CHANGE(limechain):
-
-// UpdateConfigAndSlots updates the tx list configuration and assigned slots.
+// UpdateConfigAndSlots updates the assigned slots and configuration for
+// preaparing tx lists.
 func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
 	l1GenesisTimestamp uint64,
 	newAssignedSlots []uint64,
@@ -114,12 +114,12 @@ func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
 	}
 	slots := append(updatedAssignedSlots, newAssignedSlots...)
 	rawdb.WriteAssignedL1Slots(db, slots)
-	log.Info("Assigned slots were updated", "slots", slots)
+	log.Error("Assigned slots were updated", "slots", slots)
 
 	return nil
 }
 
-// FetchTxList retrieves already pre-built list of txs.
+// FetchTxList retrieves already prepared list of txs.
 func (a *TaikoAuthAPIBackend) FetchTxList(slot uint64) ([]*miner.PreBuiltTxList, error) {
 	return a.eth.Miner().FetchTxList(slot)
 }

@@ -98,11 +98,13 @@ type Backend interface {
 	SubscribePendingLogsEvent(ch chan<- []*types.Log) event.Subscription
 	BloomStatus() (uint64, uint64)
 	ServiceFilter(ctx context.Context, session *bloombits.MatcherSession)
+
+	// CHANGE(limechain):
+	SlotEstLock() *slocks.PerSlotLocker
 }
 
 func GetAPIs(apiBackend Backend) []rpc.API {
 	nonceLock := new(AddrLocker)
-	slotEstLock := new(slocks.PerSlotLocker)
 	return []rpc.API{
 		{
 			Namespace: "eth",
@@ -112,7 +114,7 @@ func GetAPIs(apiBackend Backend) []rpc.API {
 			Service:   NewBlockChainAPI(apiBackend),
 		}, {
 			Namespace: "eth",
-			Service:   NewTransactionAPI(apiBackend, nonceLock, slotEstLock),
+			Service:   NewTransactionAPI(apiBackend, nonceLock),
 		}, {
 			Namespace: "txpool",
 			Service:   NewTxPoolAPI(apiBackend),

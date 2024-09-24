@@ -3,6 +3,7 @@ package miner
 import (
 	"bytes"
 	"compress/zlib"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -27,7 +28,7 @@ import (
 // 2. The total gas used should not exceed the given blockMaxGasLimit
 // 3. The total bytes used should not exceed the given maxBytesPerTxList
 // 4. The total number of transactions lists should not exceed the given maxTransactionsLists
-func (w *worker) UpdateTxSnapshot(
+func (w *worker) UpdateTxSnapshots(
 	snapshotSlot uint64,
 	beneficiary common.Address,
 	baseFee *big.Int,
@@ -79,7 +80,7 @@ func (w *worker) UpdateTxSnapshot(
 		localTxs, remoteTxs = w.getPendingTxs(localAccounts, baseFee)
 	)
 
-	commitTxs := func() (*types.SlotTxSnapshot, error) {
+	commitTxs := func() (*types.TxSlotSnapshot, *types.TxPoolSnapshot, error) {
 		env.tcount = 0
 		env.txs = []*types.Transaction{}
 		env.gasPool = new(core.GasPool).AddGas(blockMaxGasLimit)
@@ -107,29 +108,34 @@ func (w *worker) UpdateTxSnapshot(
 		b, err := encodeAndComporeessTxList(env.txs)
 		if err != nil {
 			log.Error("Failed to encode and compress tx list", "err", err)
-			return nil, err
+			return nil, nil, err
 		}
 
 		// CHANGE(limechain): keeps tx snapshots up to date.
-		slotTxSnapshot := w.UpdateSnapshotTxs(snapshotSlot, env.txs, b, env)
-		return slotTxSnapshot, nil
+		txSlotSnapshot := w.txSnapshotsBuilder.updateTxSlotSnapshot(snapshotSlot, env.txs, b, env)
+		txPoolSnapshot := w.txSnapshotsBuilder.updateTxPoolSnapshot(env.txs, b, env)
+
+		return txSlotSnapshot, txPoolSnapshot, nil
 	}
 
 	for i := 0; i < int(maxTransactionsLists); i++ {
-		slotTxSnapshot, err := commitTxs()
+		txSlotSnapshot, txPoolSnapshot, err := commitTxs()
 		if err != nil {
 			log.Error("Failed to commit transactions", "err", err)
 			return err
 		}
 
 		// TODO(limechain): remove, just for debugging purposes
-		if slotTxSnapshot != nil && (len(slotTxSnapshot.PendingTxs) != 0 || len(slotTxSnapshot.ProposedTxs) != 0 || len(slotTxSnapshot.NewTxs) != 0) {
-			log.Warn("Tx snapshot pending", "slot", snapshotSlot, "count", len(slotTxSnapshot.PendingTxs), "txs", slotTxSnapshot.PendingTxs)
-			log.Warn("Tx snapshot proposed", "slot", snapshotSlot, "count", len(slotTxSnapshot.ProposedTxs), "txs", slotTxSnapshot.ProposedTxs)
-			log.Warn("Tx snapshot new", "slot", snapshotSlot, "count", len(slotTxSnapshot.NewTxs), "txs", slotTxSnapshot.NewTxs)
+		if txSlotSnapshot != nil && len(txSlotSnapshot.Txs) != 0 {
+			log.Warn("Tx slot snapshot", "slot", snapshotSlot, "tx count", len(txSlotSnapshot.Txs), "txs", txSlotSnapshot.Txs)
+		}
+		if txPoolSnapshot != nil && (len(txPoolSnapshot.PendingTxs) != 0 || len(txPoolSnapshot.ProposedTxs) != 0 || len(txPoolSnapshot.NewTxs) != 0) {
+			log.Warn("Tx pool snapshot", "pending tx count", len(txPoolSnapshot.PendingTxs), "txs", txPoolSnapshot.PendingTxs)
+			log.Warn("Tx pool snapshot", "proposed tx count", len(txPoolSnapshot.ProposedTxs), "txs", txPoolSnapshot.ProposedTxs)
+			log.Warn("Tx pool snapshot", "new tx count", len(txPoolSnapshot.NewTxs), "txs", txPoolSnapshot.NewTxs)
 		}
 
-		if len(slotTxSnapshot.PendingTxs) == 0 {
+		if (txSlotSnapshot != nil && len(txSlotSnapshot.Txs) == 0) && (txPoolSnapshot != nil && len(txPoolSnapshot.NewTxs) == 0) {
 			break
 		}
 	}
@@ -186,6 +192,13 @@ func (w *worker) sealBlockWith(
 	env.gasPool = new(core.GasPool).AddGas(gasLimit)
 
 	for i, tx := range txs {
+		log.Error("Sealing tx", "index", i, "hash", tx.Hash())
+		jsonBytes, err := json.MarshalIndent(tx, "", "  ")
+		if err != nil {
+			log.Error("Error marshaling struct to JSON: %v", err)
+		}
+		fmt.Println(string(jsonBytes))
+
 		if i == 0 {
 			if err := tx.MarkAsAnchor(); err != nil {
 				return nil, err

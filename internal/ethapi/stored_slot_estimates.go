@@ -7,7 +7,8 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 )
 
-// CHANGE(limechain):
+// CHANGE(limechain): Provides a way to store and retrieve gas/bytes
+// estimates per slot used during preconf tx submission.
 
 type StoredSlotEstimates struct {
 	db       ethdb.Database

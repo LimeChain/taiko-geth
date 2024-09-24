@@ -66,12 +66,19 @@ type testBlockChain struct {
 	gasLimit      atomic.Uint64
 	statedb       *state.StateDB
 	chainHeadFeed *event.Feed
+	// CHANGE(limechain):
+	invPreconfTxCh chan core.InvalidPreconfTxEvent
 }
 
 func newTestBlockChain(config *params.ChainConfig, gasLimit uint64, statedb *state.StateDB, chainHeadFeed *event.Feed) *testBlockChain {
-	bc := testBlockChain{config: config, statedb: statedb, chainHeadFeed: new(event.Feed)}
+	bc := testBlockChain{config: config, statedb: statedb, chainHeadFeed: new(event.Feed), invPreconfTxCh: make(chan core.InvalidPreconfTxEvent)}
 	bc.gasLimit.Store(gasLimit)
 	return &bc
+}
+
+// CHANGE(limechain):
+func (bc *testBlockChain) InvPreconfTxCh() chan core.InvalidPreconfTxEvent {
+	return bc.invPreconfTxCh
 }
 
 func (bc *testBlockChain) Config() *params.ChainConfig {

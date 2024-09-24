@@ -461,6 +461,10 @@ func newTestBackend(t *testing.T, n int, gspec *core.Genesis, engine consensus.E
 	return backend
 }
 
+func (b testBackend) SlotEstLock() *slocks.PerSlotLocker {
+	return &slocks.PerSlotLocker{}
+}
+
 func (b *testBackend) setPendingBlock(block *types.Block) {
 	b.pending = block
 }
@@ -991,7 +995,7 @@ func TestSignTransaction(t *testing.T) {
 	b := newTestBackend(t, 1, genesis, beacon.New(ethash.NewFaker()), func(i int, b *core.BlockGen) {
 		b.SetPoS()
 	})
-	api := NewTransactionAPI(b, nil, nil)
+	api := NewTransactionAPI(b, nil)
 	res, err := api.FillTransaction(context.Background(), TransactionArgs{
 		From:  &b.acc.Address,
 		To:    &to,
@@ -1029,7 +1033,7 @@ func TestSignBlobTransaction(t *testing.T) {
 	b := newTestBackend(t, 1, genesis, beacon.New(ethash.NewFaker()), func(i int, b *core.BlockGen) {
 		b.SetPoS()
 	})
-	api := NewTransactionAPI(b, nil, nil)
+	api := NewTransactionAPI(b, nil)
 	res, err := api.FillTransaction(context.Background(), TransactionArgs{
 		From:       &b.acc.Address,
 		To:         &to,
@@ -1063,7 +1067,7 @@ func TestSendBlobTransaction(t *testing.T) {
 	b := newTestBackend(t, 1, genesis, beacon.New(ethash.NewFaker()), func(i int, b *core.BlockGen) {
 		b.SetPoS()
 	})
-	api := NewTransactionAPI(b, nil, nil)
+	api := NewTransactionAPI(b, nil)
 	res, err := api.FillTransaction(context.Background(), TransactionArgs{
 		From:       &b.acc.Address,
 		To:         &to,
@@ -1100,7 +1104,7 @@ func TestFillBlobTransaction(t *testing.T) {
 	b := newTestBackend(t, 1, genesis, beacon.New(ethash.NewFaker()), func(i int, b *core.BlockGen) {
 		b.SetPoS()
 	})
-	api := NewTransactionAPI(b, nil, nil)
+	api := NewTransactionAPI(b, nil)
 	type result struct {
 		Hashes  []common.Hash
 		Sidecar *types.BlobTxSidecar
@@ -1877,7 +1881,7 @@ func TestRPCGetTransactionReceipt(t *testing.T) {
 
 	var (
 		backend, txHashes = setupReceiptBackend(t, 6)
-		api               = NewTransactionAPI(backend, new(AddrLocker), new(slocks.PerSlotLocker))
+		api               = NewTransactionAPI(backend, new(AddrLocker))
 	)
 
 	var testSuite = []struct {

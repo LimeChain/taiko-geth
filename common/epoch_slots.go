@@ -1,5 +1,11 @@
 package common
 
+// CHANGE(limechain):
+
+const (
+	SlotsOffsetInAdvance = 3 // value requirement, imposed by the other infra components
+)
+
 var (
 	EpochLength  = 32 // number of slots per epoch
 	SlotDuration = 12 // duration of each slot in seconds

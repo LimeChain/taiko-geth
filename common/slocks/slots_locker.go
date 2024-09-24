@@ -2,7 +2,7 @@ package slocks
 
 import "sync"
 
-// CHANGE(limechain):
+// CHANGE(limechain): Provides a per-slot mutex locker.
 
 type PerSlotLocker struct {
 	mu    sync.Mutex

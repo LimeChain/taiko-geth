@@ -482,7 +482,7 @@ func (s *PersonalAccountAPI) SendTransaction(ctx context.Context, args Transacti
 		log.Warn("Failed transaction send attempt", "from", args.from(), "to", args.To, "value", args.Value.ToInt(), "err", err)
 		return common.Hash{}, err
 	}
-	return SubmitTransaction(ctx, s.b, signed, nil)
+	return SubmitTransaction(ctx, s.b, signed)
 }
 
 // SignTransaction will create a transaction from the given arguments and
@@ -1569,16 +1569,15 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 type TransactionAPI struct {
 	b         Backend
 	nonceLock *AddrLocker
-	slotEstMu *slocks.PerSlotLocker
 	signer    types.Signer
 }
 
 // NewTransactionAPI creates a new RPC service with methods for interacting with transactions.
-func NewTransactionAPI(b Backend, nonceLock *AddrLocker, slotEstLock *slocks.PerSlotLocker) *TransactionAPI {
+func NewTransactionAPI(b Backend, nonceLock *AddrLocker) *TransactionAPI {
 	// The signer used by the API should always be the 'latest' known one because we expect
 	// signers to be backwards-compatible with old transactions.
 	signer := types.LatestSigner(b.ChainConfig())
-	return &TransactionAPI{b, nonceLock, slotEstLock, signer}
+	return &TransactionAPI{b, nonceLock, signer}
 }
 
 // GetBlockTransactionCountByNumber returns the number of transactions in the block with the given block number.
@@ -1823,7 +1822,7 @@ func (s *TransactionAPI) sign(addr common.Address, tx *types.Transaction) (*type
 }
 
 // SubmitTransaction is a helper function that submits tx to txPool and logs a message.
-func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction, slotEstLock *slocks.PerSlotLocker) (common.Hash, error) {
+func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (common.Hash, error) {
 	// If the transaction fee cap is already specified, ensure the
 	// fee of the given transaction is _reasonable_.
 	if err := checkTxFee(tx.GasPrice(), tx.Gas(), b.RPCTxFeeCap()); err != nil {
@@ -1832,7 +1831,7 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction, sl
 
 	// CHANGE(limechain): check whether inclusion constraints are met.
 	if tx.Type() == types.InclusionPreconfirmationTxType {
-		err := validateInclusionConstraints(b, tx, slotEstLock)
+		err := validateInclusionConstraints(b, tx, b.SlotEstLock())
 		if err != nil {
 			return common.Hash{}, err
 		}
@@ -1873,9 +1872,9 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction, slotEstLock 
 	}
 	currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
 
-	earliestAcceptableSlot := currentSlot + 3
-	// Do not accept txs with deadlines that are for a past or current slots, as it is not possible to include them.
-	// The deadline check needs to be done in advance.
+	earliestAcceptableSlot := currentSlot + common.SlotsOffsetInAdvance
+	// Do not accept txs with deadlines that are for a past or current slot,
+	// as it is not possible to include them, the deadline check must be performed in advance.
 	if tx.Deadline().Uint64() < earliestAcceptableSlot {
 		return fmt.Errorf("inclusion tx rejected, deadline is for past or current slot [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
 	}
@@ -1890,38 +1889,35 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction, slotEstLock 
 		return errors.New("can't validate inclusion constraints, assigned slots are unknown")
 	}
 
-	// TODO(limechain): reset previous slot estimates
 	storedSlotEstimates := NewStoredSlotEstimates(db, slotEstLock)
 
+	// Deadline is for the earliest slot prepared txs for inclusion.
 	if tx.Deadline().Uint64() == earliestAcceptableSlot {
-		// There are per slot gas/bytes estimates, which are separate from the actual gas/bytes
-		// in the tx snapshots accessed by the worker
+		// Here, estimates of gas and bytes per slot are used, separate
+		// from the actual gas and bytes in the tx slot snapshots.
 		slotEstimates := storedSlotEstimates.Read(tx.Deadline().Uint64())
-		// Deadline is for the current slot.
 		if assignedToProposeBlock(tx.Deadline().Uint64(), assignedSlots) {
 			// Check whether the block space constraints are met (gas and byte estimates).
-			if slotEstimates.GasUsed+tx.Gas() > txListConfig.BlockMaxGasLimit || slotEstimates.BytesLength+tx.Size() > txListConfig.MaxBytesPerTxList {
+			if slotEstimates.GasUsed+tx.Gas() > txListConfig.BlockMaxGasLimit ||
+				slotEstimates.BytesLength+tx.Size() > txListConfig.MaxBytesPerTxList {
 				log.Error("inclusion tx rejected, gas or bytes limit reached", "hash", tx.Hash(), "deadline", tx.Deadline().Uint64(), "current slot", currentSlot)
 				return fmt.Errorf("inclusion tx rejected, gas or bytes limit reached [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
 			}
+			updateSlotEstimates(storedSlotEstimates, slotEstimates, tx.Deadline().Uint64(), tx.Gas(), tx.Size())
+			return nil
 		} else {
 			return fmt.Errorf("inclusion tx rejected, not assigned to propose block [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
 		}
-
-		updateSlotEstimates(storedSlotEstimates, slotEstimates, tx.Deadline().Uint64(), tx.Gas(), tx.Size())
-		return nil
 	}
 
-	// TODO(limechain): check how many epochs in advance we know the slots, and then adjust the logic.
-	// Deadline is for a future slot in future epochs, so the slot assignment is unknown.
-	// firstSlotFromNextEpoch := currentEpoch*uint64(common.EpochLength) + uint64(common.EpochLength)
-	// if tx.Deadline().Uint64() > firstSlotFromNextEpoch {
-	// 	return fmt.Errorf("inclusion tx rejected, too far in the future [hash %s deadline %d current epoch %d]", tx.Hash(), tx.Deadline().Uint64(), currentEpoch)
-	// }
+	// TODO(limechain): To be able to respond early with an error, determine
+	// how far ahead we know the slot assignment and adjust the logic to reject
+	// deadlines in future epochs where slot assignment is unknown.
 
 	// Deadline is for a future slot in the current epoch, and the slot assignment is known.
 	lookup := assignedSlotsLookup(assignedSlots)
-	// Check whether txs could be included in future slots prior to the deadline, in which we are assigned to propose.
+	// Check whether txs could be included in future slots prior to the deadline,
+	// in which we are assigned to propose.
 	assignedFutureSlotsPriorDeadline := []uint64{}
 	for slot := currentSlot + 1; slot <= uint64(tx.Deadline().Uint64()); slot++ {
 		if lookup[slot] {
@@ -1933,13 +1929,16 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction, slotEstLock 
 		return fmt.Errorf("inclusion tx rejected, no assigned slots [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
 	}
 
-	// Initially the worst-case scenario is assumed, where the tx is included in the last possible slot just prior to the deadline.
+	// Fetching which txs to propose first is dictated from outside, and
+	// they are fetched per slot based on the deadline. Specifically,
+	// a tx is included in the last possible slot just prior to the deadline.
+	// As an optimization, if sufficient block space is available, a tx could
+	// be processed in earlier slots and constraints updated accordingly.
 	futureSlotEstimates := storedSlotEstimates.Read(tx.Deadline().Uint64())
-	if futureSlotEstimates.GasUsed+tx.Gas() > txListConfig.BlockMaxGasLimit || futureSlotEstimates.BytesLength+tx.Size() > txListConfig.MaxBytesPerTxList {
+	if futureSlotEstimates.GasUsed+tx.Gas() > txListConfig.BlockMaxGasLimit ||
+		futureSlotEstimates.BytesLength+tx.Size() > txListConfig.MaxBytesPerTxList {
 		return fmt.Errorf("inclusion tx rejected, gas or bytes limit reached [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
 	}
-	// Update the transaction's gas and byte usage per slot, depending on the latest deadline and assigned slots
-	// and later during execution, update the constraints.
 	updateSlotEstimates(storedSlotEstimates, futureSlotEstimates, tx.Deadline().Uint64(), tx.Gas(), tx.Size())
 	return nil
 }
@@ -2000,7 +1999,7 @@ func (s *TransactionAPI) SendTransaction(ctx context.Context, args TransactionAr
 	if err != nil {
 		return common.Hash{}, err
 	}
-	return SubmitTransaction(ctx, s.b, signed, s.slotEstMu)
+	return SubmitTransaction(ctx, s.b, signed)
 }
 
 // FillTransaction fills the defaults (nonce, gas, gasPrice or 1559 fields)
@@ -2029,7 +2028,7 @@ func (s *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil.B
 	if err := tx.UnmarshalBinary(input); err != nil {
 		return common.Hash{}, err
 	}
-	return SubmitTransaction(ctx, s.b, tx, s.slotEstMu)
+	return SubmitTransaction(ctx, s.b, tx)
 }
 
 // Sign calculates an ECDSA signature for:

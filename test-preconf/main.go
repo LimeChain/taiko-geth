@@ -18,10 +18,6 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// blockMaxGasLimit=240,000,000 maxBytesPerTxList=126,976
-// worker  gas=1,684,000  bytes=1016
-// web  	 gas=47,994,000 byte=26790
-
 var (
 	url                = "http://127.0.0.1:28545"
 	chainID            = big.NewInt(167001) // mainnet
@@ -63,122 +59,20 @@ var (
 				types.InclusionPreconfirmationTx{Nonce: nonce + 6, To: george.Address(), Deadline: nextSlotDeadline},
 			},
 			*alice.Address(): {
-				types.InclusionPreconfirmationTx{Nonce: nonce + 0, To: alice.Address(), Deadline: nextSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 1, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 2, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 3, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 4, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 5, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 6, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 7, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 8, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 9, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 10, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 11, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 12, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 13, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 14, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 15, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 16, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 17, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 18, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 19, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 20, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 21, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 22, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 23, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 24, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 25, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 26, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 27, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 28, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 29, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 30, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 31, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 32, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 33, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 34, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 35, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 36, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 37, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 38, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 39, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 40, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 41, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 42, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 43, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 44, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 45, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 46, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 47, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 48, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 49, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 50, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 51, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 52, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 53, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 54, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 55, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 56, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 57, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 58, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 59, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 60, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 61, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 62, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 63, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 64, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 65, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 66, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 67, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 68, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 69, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 70, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 71, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 72, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 73, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 74, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 75, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 76, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 77, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 78, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 79, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 80, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 81, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 82, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 83, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 84, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 85, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 86, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 87, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 88, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 89, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 90, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 91, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 92, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 93, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 94, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 95, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 96, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 97, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 98, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 99, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 100, To: alice.Address(), Deadline: currentSlotDeadline},
-				//---
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 0, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 1, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 2, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 3, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 4, To: alice.Address(), Deadline: currentSlotDeadline},
+				types.DynamicFeeTx{Nonce: nonce + 0, To: george.Address()},
+				// types.InclusionPreconfirmationTx{Nonce: nonce + 0, To: alice.Address(), Deadline: nextSlotDeadline},
+				// types.InclusionPreconfirmationTx{Nonce: nonce + 1, To: alice.Address(), Deadline: nextSlotDeadline},
+				// types.InclusionPreconfirmationTx{Nonce: nonce + 2, To: alice.Address(), Deadline: nextSlotDeadline},
+				// types.InclusionPreconfirmationTx{Nonce: nonce + 3, To: alice.Address(), Deadline: nextSlotDeadline},
+				// types.InclusionPreconfirmationTx{Nonce: nonce + 4, To: alice.Address(), Deadline: nextSlotDeadline},
 				// types.DynamicFeeTx{Nonce: nonce + 5, To: alice.Address()},                                                  // does not have immediate receipt
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 6, To: alice.Address(), Deadline: pastSlotDeadline}, // past deadline
+				// types.InclusionPreconfirmationTx{Nonce: nonce + 6, To: alice.Address(), Deadline: pastSlotDeadline},        // past deadline
 				// types.InclusionPreconfirmationTx{Nonce: nonce + 7, To: alice.Address(), Deadline: notAssignedSlotDeadline}, // not assigned slot
 				// types.InclusionPreconfirmationTx{Nonce: nonce + 8, To: alice.Address(), Deadline: nextEpochDeadline},       // not assigned slot, in next L1 epoch
-				//---
 				// types.DynamicFeeTx{Nonce: nonce + 0, To: alice.Address()},
 				// types.DynamicFeeTx{Nonce: nonce + 1, To: alice.Address()},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 2, To: alice.Address(), Deadline: currentSlotDeadline},
-				// types.InclusionPreconfirmationTx{Nonce: nonce + 3, To: alice.Address(), Deadline: currentSlotDeadline},
+				// types.InclusionPreconfirmationTx{Nonce: nonce + 2, To: alice.Address(), Deadline: nextSlotDeadline},
+				// types.InclusionPreconfirmationTx{Nonce: nonce + 3, To: alice.Address(), Deadline: nextSlotDeadline},
 			},
 			*bob.Address(): {
 				types.DynamicFeeTx{Nonce: nonce + 0, To: george.Address()},
@@ -201,10 +95,10 @@ var (
 				types.InclusionPreconfirmationTx{Nonce: nonce + 9, To: george.Address(), Deadline: nextEpochDeadline},       // not assigned slot, in next L1 epoch
 			},
 			*dave.Address(): {
-				types.InclusionPreconfirmationTx{Nonce: nonce + 0, To: george.Address(), Deadline: currentSlotDeadline}, // processed with higher priority
-				types.InclusionPreconfirmationTx{Nonce: nonce + 1, To: george.Address(), Deadline: currentSlotDeadline}, // processed with higher priority
-				types.DynamicFeeTx{Nonce: nonce + 2, To: george.Address()},
-				types.DynamicFeeTx{Nonce: nonce + 3, To: george.Address()},
+				types.InclusionPreconfirmationTx{Nonce: nonce + 0, To: george.Address(), Deadline: nextSlotDeadline}, // processed with higher priority
+				types.InclusionPreconfirmationTx{Nonce: nonce + 1, To: george.Address(), Deadline: nextSlotDeadline}, // processed with higher priority
+				types.DynamicFeeTx{Nonce: nonce + 0, To: george.Address()},
+				types.DynamicFeeTx{Nonce: nonce + 1, To: george.Address()},
 			},
 			*eve.Address(): {
 				types.InclusionPreconfirmationTx{Nonce: nonce + 0, To: george.Address(), Deadline: currentSlotDeadline},
@@ -223,7 +117,7 @@ var (
 				types.InclusionPreconfirmationTx{Nonce: nonce + 2, To: george.Address(), Deadline: currentSlotDeadline}, // not preconfirmed
 			},
 			*george.Address(): {
-				types.InclusionPreconfirmationTx{Nonce: nonce + 0, To: george.Address(), Deadline: nextSlotDeadline},
+				types.InclusionPreconfirmationTx{Nonce: nonce + 0, To: george.Address(), Deadline: new(big.Int).Add(new(big.Int).SetUint64(currentSlot), big.NewInt(3))},
 			},
 		}[addr]
 	}
@@ -341,9 +235,10 @@ func main() {
 
 		// Iterate over each tx
 		for i := 0; i < len(txs); i++ {
-			wg.Add(1)
-			go func(wg *sync.WaitGroup, tx *types.Transaction) {
-				defer wg.Done()
+			// wg.Add(1)
+			// go
+			func(wg *sync.WaitGroup, tx *types.Transaction) {
+				// defer wg.Done()
 
 				// Sign the tx
 				signedTx, err := types.SignTx(tx, types.NewPreconfSigner(chainID), account.PrivateKey())
@@ -384,7 +279,7 @@ func main() {
 			}(&wg, txWithDefaults(txs[i]))
 		}
 
-		wg.Wait()
+		// wg.Wait()
 		fmt.Println("Done")
 	}
 }
