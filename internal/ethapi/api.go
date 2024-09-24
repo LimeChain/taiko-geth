@@ -1829,11 +1829,27 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 		return common.Hash{}, err
 	}
 
+	head := b.CurrentBlock()
+	signer := types.MakeSigner(b.ChainConfig(), head.Number, head.Time)
+	from, err := types.Sender(signer, tx)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
 	// CHANGE(limechain): check whether inclusion constraints are met.
 	if tx.Type() == types.InclusionPreconfirmationTxType {
 		err := validateInclusionConstraints(b, tx, b.SlotEstLock())
 		if err != nil {
 			return common.Hash{}, err
+		}
+
+		// Do not allow nonce gaps for inclusion txs.
+		nonce, err := b.GetPoolNonce(ctx, from)
+		if err != nil {
+			return common.Hash{}, err
+		}
+		if tx.Nonce() > nonce {
+			return common.Hash{}, fmt.Errorf("inclusion tx nonce gap is not allowed, tx nonce: [%d], pool nonce: [%d]", nonce, tx.Nonce())
 		}
 	}
 
@@ -1845,12 +1861,6 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 		return common.Hash{}, err
 	}
 	// Print a log with full tx details for manual investigations and interventions
-	head := b.CurrentBlock()
-	signer := types.MakeSigner(b.ChainConfig(), head.Number, head.Time)
-	from, err := types.Sender(signer, tx)
-	if err != nil {
-		return common.Hash{}, err
-	}
 
 	if tx.To() == nil {
 		addr := crypto.CreateAddress(from, tx.Nonce())
