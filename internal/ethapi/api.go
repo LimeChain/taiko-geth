@@ -32,7 +32,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/common/slocks"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core"
@@ -1838,7 +1837,7 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 
 	// CHANGE(limechain): check whether inclusion constraints are met.
 	if tx.Type() == types.InclusionPreconfirmationTxType {
-		err := validateInclusionConstraints(b, tx, b.SlotEstLock())
+		err := validateInclusionConstraints(b, tx, b.TxSnapshotsBuilder())
 		if err != nil {
 			return common.Hash{}, err
 		}
@@ -1873,7 +1872,7 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 
 // CHANGE(limechain):
 
-func validateInclusionConstraints(b Backend, tx *types.Transaction, slotEstLock *slocks.PerSlotLocker) error {
+func validateInclusionConstraints(b Backend, tx *types.Transaction, txSnapshotsBuilder *core.TxSnapshotsBuilder) error {
 	db := b.ChainDb()
 
 	l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(db)
@@ -1881,7 +1880,6 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction, slotEstLock 
 		return errors.New("can't validate inclusion constraints, L1 genesis timestamp is unknown")
 	}
 	currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
-
 	earliestAcceptableSlot := currentSlot + common.SlotsOffsetInAdvance
 	// Do not accept txs with deadlines that are for a past or current slot,
 	// as it is not possible to include them, the deadline check must be performed in advance.
@@ -1899,21 +1897,20 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction, slotEstLock 
 		return errors.New("can't validate inclusion constraints, assigned slots are unknown")
 	}
 
-	storedSlotEstimates := NewStoredSlotEstimates(db, slotEstLock)
+	txSlotSnapshot := txSnapshotsBuilder.GetTxSlotSnapshot(tx.Deadline().Uint64())
 
 	// Deadline is for the earliest slot prepared txs for inclusion.
 	if tx.Deadline().Uint64() == earliestAcceptableSlot {
 		// Here, estimates of gas and bytes per slot are used, separate
 		// from the actual gas and bytes in the tx slot snapshots.
-		slotEstimates := storedSlotEstimates.Read(tx.Deadline().Uint64())
 		if assignedToProposeBlock(tx.Deadline().Uint64(), assignedSlots) {
 			// Check whether the block space constraints are met (gas and byte estimates).
-			if slotEstimates.GasUsed+tx.Gas() > txListConfig.BlockMaxGasLimit ||
-				slotEstimates.BytesLength+tx.Size() > txListConfig.MaxBytesPerTxList {
+			if txSlotSnapshot.GasUsed+tx.Gas() > txListConfig.BlockMaxGasLimit ||
+				txSlotSnapshot.BytesLength+tx.Size() > txListConfig.MaxBytesPerTxList {
 				log.Error("inclusion tx rejected, gas or bytes limit reached", "hash", tx.Hash(), "deadline", tx.Deadline().Uint64(), "current slot", currentSlot)
 				return fmt.Errorf("inclusion tx rejected, gas or bytes limit reached [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
 			}
-			updateSlotEstimates(storedSlotEstimates, slotEstimates, tx.Deadline().Uint64(), tx.Gas(), tx.Size())
+			txSnapshotsBuilder.UpdateBytesAndGasEstimate(txSlotSnapshot, tx.Gas(), tx.Size())
 			return nil
 		} else {
 			return fmt.Errorf("inclusion tx rejected, not assigned to propose block [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
@@ -1944,20 +1941,14 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction, slotEstLock 
 	// a tx is included in the last possible slot just prior to the deadline.
 	// As an optimization, if sufficient block space is available, a tx could
 	// be processed in earlier slots and constraints updated accordingly.
-	futureSlotEstimates := storedSlotEstimates.Read(tx.Deadline().Uint64())
-	if futureSlotEstimates.GasUsed+tx.Gas() > txListConfig.BlockMaxGasLimit ||
-		futureSlotEstimates.BytesLength+tx.Size() > txListConfig.MaxBytesPerTxList {
+	futureTxSlotSnapshot := txSnapshotsBuilder.GetTxSlotSnapshot(tx.Deadline().Uint64())
+	if futureTxSlotSnapshot.GasUsed+tx.Gas() > txListConfig.BlockMaxGasLimit ||
+		futureTxSlotSnapshot.BytesLength+tx.Size() > txListConfig.MaxBytesPerTxList {
 		return fmt.Errorf("inclusion tx rejected, gas or bytes limit reached [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
 	}
-	updateSlotEstimates(storedSlotEstimates, futureSlotEstimates, tx.Deadline().Uint64(), tx.Gas(), tx.Size())
+	log.Info("Inclusion tx for future slot", "hash", tx.Hash(), "deadline", tx.Deadline().Uint64())
+	txSnapshotsBuilder.UpdateBytesAndGasEstimate(txSlotSnapshot, tx.Gas(), tx.Size())
 	return nil
-}
-
-func updateSlotEstimates(storedSlotEstimates *StoredSlotEstimates, slotEstimates *types.SlotEstimates, slot uint64, gas uint64, bytes uint64) {
-	slotEstimates.GasUsed += gas
-	slotEstimates.BytesLength += bytes
-	storedSlotEstimates.Write(slot, slotEstimates)
-	log.Warn("Update slot estimates", "slot", slot, "gasUsed", gas, "bytesLength", bytes)
 }
 
 func assignedToProposeBlock(slot uint64, assignedSlots []uint64) bool {

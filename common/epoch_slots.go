@@ -3,7 +3,7 @@ package common
 // CHANGE(limechain):
 
 const (
-	SlotsOffsetInAdvance = 3 // value requirement, imposed by the other infra components
+	SlotsOffsetInAdvance = 2 // value imposed by the other infra components
 )
 
 var (

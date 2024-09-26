@@ -78,6 +78,19 @@ func NewTaikoAuthAPIBackend(eth *Ethereum) *TaikoAuthAPIBackend {
 }
 
 // CHANGE(limechain):
+
+func (a *TaikoAPIBackend) FetchL1GenesisTimestamp() uint64 {
+	timestamp := rawdb.ReadL1GenesisTimestamp(a.eth.ChainDb())
+	if timestamp == nil {
+		return 0
+	}
+	return *timestamp
+}
+
+func (a *TaikoAPIBackend) FetchAssignedSlots() []uint64 {
+	return rawdb.ReadAssignedL1Slots(a.eth.ChainDb())
+}
+
 // UpdateConfigAndSlots updates the assigned slots and configuration for
 // preaparing tx lists.
 func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
@@ -105,16 +118,35 @@ func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
 	rawdb.WriteTxListConfig(db, txListConfig)
 
 	currentSlot, _ := common.CurrentSlotAndEpoch(l1GenesisTimestamp, time.Now().Unix())
+
 	storedSlots := rawdb.ReadAssignedL1Slots(db)
+	slotsCache := make(map[uint64]bool)
 	updatedAssignedSlots := make([]uint64, 0)
+
 	for _, slot := range storedSlots {
-		if slot >= currentSlot {
+		if slot < currentSlot {
+			continue
+		}
+
+		if _, ok := slotsCache[slot]; !ok {
 			updatedAssignedSlots = append(updatedAssignedSlots, slot)
+			slotsCache[slot] = true
 		}
 	}
-	slots := append(updatedAssignedSlots, newAssignedSlots...)
-	rawdb.WriteAssignedL1Slots(db, slots)
-	log.Error("Assigned slots were updated", "slots", slots)
+
+	for _, slot := range newAssignedSlots {
+		if slot < currentSlot {
+			continue
+		}
+
+		if _, ok := slotsCache[slot]; !ok {
+			updatedAssignedSlots = append(updatedAssignedSlots, slot)
+			slotsCache[slot] = true
+		}
+	}
+
+	rawdb.WriteAssignedL1Slots(db, updatedAssignedSlots)
+	log.Error("Current assigned slots", "slots", updatedAssignedSlots)
 
 	return nil
 }

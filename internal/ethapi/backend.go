@@ -25,7 +25,6 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/slocks"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/bloombits"
@@ -100,7 +99,7 @@ type Backend interface {
 	ServiceFilter(ctx context.Context, session *bloombits.MatcherSession)
 
 	// CHANGE(limechain):
-	SlotEstLock() *slocks.PerSlotLocker
+	TxSnapshotsBuilder() *core.TxSnapshotsBuilder
 }
 
 func GetAPIs(apiBackend Backend) []rpc.API {

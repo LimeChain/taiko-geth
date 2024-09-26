@@ -25,7 +25,6 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/slocks"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/bloombits"
@@ -49,11 +48,6 @@ type EthAPIBackend struct {
 	allowUnprotectedTxs bool
 	eth                 *Ethereum
 	gpo                 *gasprice.Oracle
-}
-
-// CHANGE(limechain):
-func (b *EthAPIBackend) SlotEstLock() *slocks.PerSlotLocker {
-	return b.eth.BlockChain().SlotEstLock()
 }
 
 // ChainConfig returns the active chain configuration.
@@ -441,4 +435,10 @@ func (b *EthAPIBackend) StateAtBlock(ctx context.Context, block *types.Block, re
 
 func (b *EthAPIBackend) StateAtTransaction(ctx context.Context, block *types.Block, txIndex int, reexec uint64) (*core.Message, vm.BlockContext, *state.StateDB, tracers.StateReleaseFunc, error) {
 	return b.eth.stateAtTransaction(ctx, block, txIndex, reexec)
+}
+
+// CHANGE(limechain):
+
+func (b *EthAPIBackend) TxSnapshotsBuilder() *core.TxSnapshotsBuilder {
+	return b.eth.BlockChain().TxSnapshotsBuilder()
 }

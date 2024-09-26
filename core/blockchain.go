@@ -32,7 +32,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/common/prque"
-	"github.com/ethereum/go-ethereum/common/slocks"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -262,8 +261,8 @@ type BlockChain struct {
 	vmConfig   vm.Config
 
 	// CHANGE(limechain):
-	invPreconfTxCh chan InvalidPreconfTxEvent
-	slotEstLock    *slocks.PerSlotLocker
+	invPreconfTxCh     chan InvalidPreconfTxEvent
+	txSnapshotsBuilder *TxSnapshotsBuilder
 }
 
 // NewBlockChain returns a fully initialised block chain using information
@@ -309,8 +308,8 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		vmConfig:      vmConfig,
 		// CHANGE(limechain):
 		invPreconfTxCh: make(chan InvalidPreconfTxEvent),
-		slotEstLock:    new(slocks.PerSlotLocker),
 	}
+	bc.txSnapshotsBuilder = NewTxSnapshotsBuilder(db, bc.invPreconfTxCh)
 	bc.flushInterval.Store(int64(cacheConfig.TrieTimeLimit))
 	bc.forker = NewForkChoice(bc, shouldPreserve)
 	bc.stateCache = state.NewDatabaseWithNodeDB(bc.db, bc.triedb)
@@ -2478,6 +2477,6 @@ func (bc *BlockChain) InvPreconfTxCh() chan InvalidPreconfTxEvent {
 	return bc.invPreconfTxCh
 }
 
-func (bc *BlockChain) SlotEstLock() *slocks.PerSlotLocker {
-	return bc.slotEstLock
+func (bc *BlockChain) TxSnapshotsBuilder() *TxSnapshotsBuilder {
+	return bc.txSnapshotsBuilder
 }

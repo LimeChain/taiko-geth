@@ -1,10 +1,12 @@
 package miner
 
 import (
+	"errors"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 )
@@ -38,14 +40,32 @@ func (miner *Miner) FetchTxList(slot uint64) ([]*PreBuiltTxList, error) {
 		totalBytes   uint64
 	)
 
-	txSlotSnapshot := miner.worker.txSnapshotsBuilder.getTxSlotSnapshot(slot)
-	log.Error("Fetching preconf txs from slot snapshot", "slot", slot, "txs", txSlotSnapshot.Txs)
-	txs = append(txs, txSlotSnapshot.Txs...)
+	db := miner.worker.chain.DB()
 
-	miner.worker.txSnapshotsBuilder.proposeFromTxPoolSnapshot()
-	txPoolSnapshot := miner.worker.txSnapshotsBuilder.getTxPoolSnapshot()
-	log.Error("Fetching non-preconf txs from txpool snapshot", "txs", txPoolSnapshot.NewTxs)
-	txs = append(txs, txPoolSnapshot.NewTxs...)
+	txListConfig := rawdb.ReadTxListConfig(db)
+	if txListConfig == nil {
+		return nil, errors.New("failed to fetch tx list config")
+	}
+
+	slotIndex := common.SlotIndex(slot)
+	txSlotSnapshot := miner.worker.txSnapshotsBuilder.GetTxSlotSnapshot(slotIndex)
+
+	txs = append(txs, txSlotSnapshot.Txs...)
+	totalGasUsed += txSlotSnapshot.GasUsed
+	totalBytes += txSlotSnapshot.BytesLength
+
+	// Fetch non-preconf txs from txpool snapshot
+	miner.worker.txSnapshotsBuilder.ProposeFromTxPoolSnapshot()
+	txPoolSnapshot := miner.worker.txSnapshotsBuilder.GetTxPoolSnapshot()
+	if totalGasUsed+txPoolSnapshot.GasUsed < txListConfig.BlockMaxGasLimit &&
+		totalBytes+txPoolSnapshot.BytesLength < txListConfig.MaxBytesPerTxList {
+
+		totalGasUsed += txPoolSnapshot.GasUsed
+		totalBytes += txPoolSnapshot.BytesLength
+		txs = append(txs, txPoolSnapshot.NewTxs...)
+	} else {
+		log.Error("Failed to fetch tx pool snapshot")
+	}
 
 	// TODO(limechain): support multiple tx lists
 	txList := &PreBuiltTxList{
@@ -54,5 +74,6 @@ func (miner *Miner) FetchTxList(slot uint64) ([]*PreBuiltTxList, error) {
 		BytesLength:      totalBytes,
 	}
 
+	log.Error("Fetch tx list", "slot index", common.SlotIndex(slot), "txs", txs, "gas used", totalGasUsed, "bytes length", totalBytes)
 	return []*PreBuiltTxList{txList}, nil
 }

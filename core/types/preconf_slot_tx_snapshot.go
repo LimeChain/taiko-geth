@@ -26,6 +26,7 @@ func NewTxPoolSnapshot() *TxPoolSnapshot {
 // Snapshot of preconf txs prepeared in advance for each slot,
 // there is no case where proposer runs during preparation of the slot snapshot.
 type TxSlotSnapshot struct {
+	SlotIndex   uint64
 	Txs         Transactions
 	GasUsed     uint64
 	BytesLength uint64

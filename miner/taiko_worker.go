@@ -3,7 +3,6 @@ package miner
 import (
 	"bytes"
 	"compress/zlib"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -37,15 +36,7 @@ func (w *worker) UpdateTxSnapshots(
 	localAccounts []string,
 	maxTransactionsLists uint64,
 ) error {
-	// log.Info("Update txs snapshot for slot",
-	// 	"snapshotSlot", snapshotSlot,
-	// 	"beneficiary", beneficiary,
-	// 	"baseFee", baseFee,
-	// 	"blockMaxGasLimit", blockMaxGasLimit,
-	// 	"maxBytesPerTxList", maxBytesPerTxList,
-	// 	"localAccounts", localAccounts,
-	// 	"maxTransactionsLists", maxTransactionsLists,
-	// )
+	log.Info("Prepare slot snapshot", "slot index", snapshotSlot)
 
 	currentHead := w.chain.CurrentBlock()
 	if currentHead == nil {
@@ -112,8 +103,10 @@ func (w *worker) UpdateTxSnapshots(
 		}
 
 		// CHANGE(limechain): keeps tx snapshots up to date.
-		txSlotSnapshot := w.txSnapshotsBuilder.updateTxSlotSnapshot(snapshotSlot, env.txs, b, env)
-		txPoolSnapshot := w.txSnapshotsBuilder.updateTxPoolSnapshot(env.txs, b, env)
+		gasUsed := env.header.GasLimit - env.gasPool.Gas()
+		// TODO(limechain): spearate the gas usage
+		txSlotSnapshot := w.txSnapshotsBuilder.UpdateTxSlotSnapshot(snapshotSlot, env.txs, b, gasUsed)
+		txPoolSnapshot := w.txSnapshotsBuilder.UpdateTxPoolSnapshot(env.txs, b, gasUsed)
 
 		return txSlotSnapshot, txPoolSnapshot, nil
 	}
@@ -123,16 +116,6 @@ func (w *worker) UpdateTxSnapshots(
 		if err != nil {
 			log.Error("Failed to commit transactions", "err", err)
 			return err
-		}
-
-		// TODO(limechain): remove, just for debugging purposes
-		if txSlotSnapshot != nil && len(txSlotSnapshot.Txs) != 0 {
-			log.Warn("Tx slot snapshot", "slot", snapshotSlot, "tx count", len(txSlotSnapshot.Txs), "txs", txSlotSnapshot.Txs)
-		}
-		if txPoolSnapshot != nil && (len(txPoolSnapshot.PendingTxs) != 0 || len(txPoolSnapshot.ProposedTxs) != 0 || len(txPoolSnapshot.NewTxs) != 0) {
-			log.Warn("Tx pool snapshot", "pending tx count", len(txPoolSnapshot.PendingTxs), "txs", txPoolSnapshot.PendingTxs)
-			log.Warn("Tx pool snapshot", "proposed tx count", len(txPoolSnapshot.ProposedTxs), "txs", txPoolSnapshot.ProposedTxs)
-			log.Warn("Tx pool snapshot", "new tx count", len(txPoolSnapshot.NewTxs), "txs", txPoolSnapshot.NewTxs)
 		}
 
 		if (txSlotSnapshot != nil && len(txSlotSnapshot.Txs) == 0) && (txPoolSnapshot != nil && len(txPoolSnapshot.NewTxs) == 0) {
@@ -192,13 +175,7 @@ func (w *worker) sealBlockWith(
 	env.gasPool = new(core.GasPool).AddGas(gasLimit)
 
 	for i, tx := range txs {
-		log.Error("Sealing tx", "index", i, "hash", tx.Hash())
-		jsonBytes, err := json.MarshalIndent(tx, "", "  ")
-		if err != nil {
-			log.Error("Error marshaling struct to JSON: %v", err)
-		}
-		fmt.Println(string(jsonBytes))
-
+		log.Warn("Seal tx", "index", i, "hash", tx.Hash().String())
 		if i == 0 {
 			if err := tx.MarkAsAnchor(); err != nil {
 				return nil, err
@@ -206,14 +183,14 @@ func (w *worker) sealBlockWith(
 		}
 		sender, err := types.LatestSignerForChainID(w.chainConfig.ChainID).Sender(tx)
 		if err != nil {
-			log.Info("Skip an invalid proposed transaction", "hash", tx.Hash(), "reason", err)
+			log.Error("Skip an invalid proposed transaction", "hash", tx.Hash(), "reason", err)
 			continue
 		}
 
 		env.state.Prepare(rules, sender, blkMeta.Beneficiary, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
 		env.state.SetTxContext(tx.Hash(), env.tcount)
 		if _, err := w.commitTransaction(env, tx); err != nil {
-			log.Info("Skip an invalid proposed transaction", "hash", tx.Hash(), "reason", err)
+			log.Error("Skip an invalid proposed transaction", "hash", tx.Hash(), "reason", err)
 			continue
 		}
 		env.tcount++
@@ -223,6 +200,7 @@ func (w *worker) sealBlockWith(
 	if err != nil {
 		return nil, err
 	}
+	log.Warn("Seal block", "number", block.Number())
 
 	results := make(chan *types.Block, 1)
 	if err := w.engine.Seal(w.chain, block, results, nil); err != nil {
@@ -349,6 +327,7 @@ func (w *worker) commitL2Transactions(
 			break
 		}
 	}
+	log.Info("Committed transactions", "count", env.tcount)
 }
 
 // encodeAndComporeessTxList encodes and compresses the given transactions list.

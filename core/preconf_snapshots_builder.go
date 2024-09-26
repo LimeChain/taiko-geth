@@ -1,4 +1,4 @@
-package miner
+package core
 
 import (
 	"sync"
@@ -6,7 +6,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/slocks"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -16,7 +15,7 @@ import (
 
 // CHANGE(limechain):
 
-type txSnapshotsBuilder struct {
+type TxSnapshotsBuilder struct {
 	// tx slot snapshot locks
 	txSlotSnapshotMu *slocks.PerSlotLocker
 	// tx pool snapshot lock
@@ -32,8 +31,8 @@ type txSnapshotsBuilder struct {
 	preconfTxFeed event.Feed
 }
 
-func newTxSnapshotsBuilder(db ethdb.Database, invPreconfTxEventCh chan core.InvalidPreconfTxEvent) *txSnapshotsBuilder {
-	b := &txSnapshotsBuilder{
+func NewTxSnapshotsBuilder(db ethdb.Database, invPreconfTxEventCh chan InvalidPreconfTxEvent) *TxSnapshotsBuilder {
+	b := &TxSnapshotsBuilder{
 		txSlotSnapshotMu: &slocks.PerSlotLocker{},
 		txSlotCache:      initTxSlotCache(),
 		txPoolSnapshotMu: sync.Mutex{},
@@ -48,7 +47,7 @@ func newTxSnapshotsBuilder(db ethdb.Database, invPreconfTxEventCh chan core.Inva
 // Preconf txs handling
 
 // initTxSlotSnapshot initializes slot snapshot if it does not exist.
-func (b *txSnapshotsBuilder) initTxSlotSnapshot(slotIndex uint64) {
+func (b *TxSnapshotsBuilder) InitTxSlotSnapshot(slotIndex uint64) {
 	b.txSlotSnapshotMu.Lock(slotIndex)
 	defer b.txSlotSnapshotMu.Unlock(slotIndex)
 
@@ -58,7 +57,7 @@ func (b *txSnapshotsBuilder) initTxSlotSnapshot(slotIndex uint64) {
 	}
 }
 
-func (b *txSnapshotsBuilder) getTxSlotSnapshot(slotIndex uint64) *types.TxSlotSnapshot {
+func (b *TxSnapshotsBuilder) GetTxSlotSnapshot(slotIndex uint64) *types.TxSlotSnapshot {
 	b.txSlotSnapshotMu.Lock(slotIndex)
 	defer b.txSlotSnapshotMu.Unlock(slotIndex)
 
@@ -71,7 +70,7 @@ func (b *txSnapshotsBuilder) getTxSlotSnapshot(slotIndex uint64) *types.TxSlotSn
 }
 
 // updateSlotSnapshotTxs updates the slot snapshot with the new txs.
-func (b *txSnapshotsBuilder) updateTxSlotSnapshot(slotIndex uint64, txs []*types.Transaction, bz []byte, env *environment) *types.TxSlotSnapshot {
+func (b *TxSnapshotsBuilder) UpdateTxSlotSnapshot(slotIndex uint64, txs []*types.Transaction, bytesUsed []byte, gasUsed uint64) *types.TxSlotSnapshot {
 	b.txSlotSnapshotMu.Lock(slotIndex)
 	defer b.txSlotSnapshotMu.Unlock(slotIndex)
 
@@ -97,7 +96,7 @@ func (b *txSnapshotsBuilder) updateTxSlotSnapshot(slotIndex uint64, txs []*types
 		if tx.Type() == types.InclusionPreconfirmationTxType {
 			// Remove preconfirmation txs for slot deadlines that have already passed.
 			if tx.Deadline().Uint64() < currentSlot {
-				b.preconfTxFeed.Send(core.InvalidPreconfTxEvent{TxHash: tx.Hash()})
+				b.preconfTxFeed.Send(InvalidPreconfTxEvent{TxHash: tx.Hash()})
 				continue
 			}
 
@@ -115,15 +114,24 @@ func (b *txSnapshotsBuilder) updateTxSlotSnapshot(slotIndex uint64, txs []*types
 	}
 
 	// TODO(limechain): fix calculation to be for preconf txs
-	txSlotSnapshot.GasUsed = env.header.GasLimit - env.gasPool.Gas()
-	txSlotSnapshot.BytesLength = uint64(len(bz))
+	txSlotSnapshot.GasUsed = gasUsed
+	txSlotSnapshot.BytesLength = uint64(len(bytesUsed))
 	rawdb.WriteTxSlotSnapshot(b.db, slotIndex, txSlotSnapshot)
 
 	return txSlotSnapshot
 }
 
+func (b *TxSnapshotsBuilder) UpdateBytesAndGasEstimate(txSlotSnapshot *types.TxSlotSnapshot, bytesUsed uint64, gasUsed uint64) {
+	b.txSlotSnapshotMu.Lock(txSlotSnapshot.SlotIndex)
+	defer b.txSlotSnapshotMu.Unlock(txSlotSnapshot.SlotIndex)
+
+	txSlotSnapshot.BytesLength += bytesUsed
+	txSlotSnapshot.GasUsed += gasUsed
+	rawdb.WriteTxSlotSnapshot(b.db, txSlotSnapshot.SlotIndex, txSlotSnapshot)
+}
+
 // resetTxSlotSnapshot resets tx snapshot for specific slot.
-func (b *txSnapshotsBuilder) resetTxSlotSnapshot(slotIndex uint64) {
+func (b *TxSnapshotsBuilder) resetTxSlotSnapshot(slotIndex uint64) {
 	b.txSlotSnapshotMu.Lock(slotIndex)
 	defer b.txSlotSnapshotMu.Unlock(slotIndex)
 
@@ -131,17 +139,17 @@ func (b *txSnapshotsBuilder) resetTxSlotSnapshot(slotIndex uint64) {
 }
 
 // resetPastTxSlotSnapshot resets tx snapshot for slot which is in the past.
-func (b *txSnapshotsBuilder) resetPastTxSlotSnapshot(slotIndex uint64, currentSlot uint64) bool {
+func (b *TxSnapshotsBuilder) resetPastTxSlotSnapshot(slotIndex uint64, currentSlot uint64) bool {
 	if slotIndex < common.SlotIndex(currentSlot) {
 		b.resetTxSlotSnapshotAndCache(slotIndex)
-		log.Warn("Past slot snapshot has been reset", "snapshot slot", slotIndex, "current slot", currentSlot)
+		// log.Warn("Past slot snapshot has been reset", "snapshot slot", slotIndex, "current slot", common.SlotIndex(currentSlot))
 		return true
 	}
 	return false
 }
 
 // resetTxSlotSnapshotAndCache resets the slot snapshot and cache.
-func (b *txSnapshotsBuilder) resetTxSlotSnapshotAndCache(slotIndex uint64) {
+func (b *TxSnapshotsBuilder) resetTxSlotSnapshotAndCache(slotIndex uint64) {
 	rawdb.WriteTxSlotSnapshot(b.db, slotIndex, types.NewTxSlotSnapshot())
 
 	if b.txSlotCache != nil {
@@ -149,7 +157,7 @@ func (b *txSnapshotsBuilder) resetTxSlotSnapshotAndCache(slotIndex uint64) {
 	}
 }
 
-func loadTxsInCache(b *txSnapshotsBuilder, slotIndex uint64, slotTxSnapshot *types.TxSlotSnapshot) {
+func loadTxsInCache(b *TxSnapshotsBuilder, slotIndex uint64, slotTxSnapshot *types.TxSlotSnapshot) {
 	if (slotTxSnapshot == types.NewTxSlotSnapshot()) || b.txSlotCache == nil {
 		b.txSlotCache = initTxSlotCache()
 		return
@@ -170,7 +178,7 @@ func initTxSlotCache() map[uint64]map[common.Hash]bool {
 
 // Other txs handling
 
-func (b *txSnapshotsBuilder) getTxPoolSnapshot() *types.TxPoolSnapshot {
+func (b *TxSnapshotsBuilder) GetTxPoolSnapshot() *types.TxPoolSnapshot {
 	b.txPoolSnapshotMu.Lock()
 	defer b.txPoolSnapshotMu.Unlock()
 
@@ -182,7 +190,7 @@ func (b *txSnapshotsBuilder) getTxPoolSnapshot() *types.TxPoolSnapshot {
 	return txPoolSnapshot
 }
 
-func (b *txSnapshotsBuilder) updateTxPoolSnapshot(txs []*types.Transaction, bz []byte, env *environment) *types.TxPoolSnapshot {
+func (b *TxSnapshotsBuilder) UpdateTxPoolSnapshot(txs []*types.Transaction, bytesUsed []byte, gasUsed uint64) *types.TxPoolSnapshot {
 	b.txPoolSnapshotMu.Lock()
 	defer b.txPoolSnapshotMu.Unlock()
 
@@ -205,8 +213,8 @@ func (b *txSnapshotsBuilder) updateTxPoolSnapshot(txs []*types.Transaction, bz [
 		}
 	}
 
-	txPoolSnapshot.GasUsed = env.header.GasLimit - env.gasPool.Gas()
-	txPoolSnapshot.BytesLength = uint64(len(bz))
+	txPoolSnapshot.GasUsed = gasUsed
+	txPoolSnapshot.BytesLength = uint64(len(bytesUsed))
 
 	rawdb.WriteTxPoolSnapshot(b.db, txPoolSnapshot)
 
@@ -214,7 +222,7 @@ func (b *txSnapshotsBuilder) updateTxPoolSnapshot(txs []*types.Transaction, bz [
 }
 
 // ProposeFromTxPoolSnapshot proposes txs from the tx pool snapshot.
-func (b *txSnapshotsBuilder) proposeFromTxPoolSnapshot() *types.TxPoolSnapshot {
+func (b *TxSnapshotsBuilder) ProposeFromTxPoolSnapshot() *types.TxPoolSnapshot {
 	b.txPoolSnapshotMu.Lock()
 	defer b.txPoolSnapshotMu.Unlock()
 
@@ -226,7 +234,7 @@ func (b *txSnapshotsBuilder) proposeFromTxPoolSnapshot() *types.TxPoolSnapshot {
 	// Do not reset the 'NewTxs' field to handle the case of 'driver' failures.
 	// Each 'propose' call will accumulate until the 'driver' finally executes
 	// and resets the state.
-	// txPoolSnapshot.NewTxs = []*types.Transaction{}
+	txPoolSnapshot.NewTxs = []*types.Transaction{}
 
 	for _, tx := range txPoolSnapshot.PendingTxs {
 		if !b.proposedTxCache[tx.Hash()] {
@@ -245,7 +253,7 @@ func (b *txSnapshotsBuilder) proposeFromTxPoolSnapshot() *types.TxPoolSnapshot {
 	return txPoolSnapshot
 }
 
-func (b *txSnapshotsBuilder) resetTxPoolSnapshot() {
+func (b *TxSnapshotsBuilder) resetTxPoolSnapshot() {
 	b.txPoolSnapshotMu.Lock()
 	defer b.txPoolSnapshotMu.Unlock()
 
@@ -279,7 +287,7 @@ func (b *txSnapshotsBuilder) resetTxPoolSnapshot() {
 	b.proposedTxCache = initTxCache()
 }
 
-func loadPendingInCache(b *txSnapshotsBuilder, txPoolSnapshot *types.TxPoolSnapshot) {
+func loadPendingInCache(b *TxSnapshotsBuilder, txPoolSnapshot *types.TxPoolSnapshot) {
 	if txPoolSnapshot == nil || (txPoolSnapshot == types.NewTxPoolSnapshot()) || b.pendingTxCache == nil {
 		b.pendingTxCache = initTxCache()
 		return
@@ -290,7 +298,7 @@ func loadPendingInCache(b *txSnapshotsBuilder, txPoolSnapshot *types.TxPoolSnaps
 	}
 }
 
-func loadProposedInCache(b *txSnapshotsBuilder, txPoolSnapshot *types.TxPoolSnapshot) {
+func loadProposedInCache(b *TxSnapshotsBuilder, txPoolSnapshot *types.TxPoolSnapshot) {
 	if txPoolSnapshot == nil || (txPoolSnapshot == types.NewTxPoolSnapshot()) || b.proposedTxCache == nil {
 		b.proposedTxCache = initTxCache()
 		return
@@ -307,11 +315,10 @@ func initTxCache() map[common.Hash]bool {
 }
 
 // resetAllTxSnapshots resets all tx snapshots.
-func (b *txSnapshotsBuilder) resetAllTxSnapshots() {
+func (b *TxSnapshotsBuilder) ResetAllTxSnapshots() {
 	for i := 0; i < common.EpochLength; i++ {
 		b.resetTxSlotSnapshot(uint64(i))
 	}
-	log.Warn("All tx slot snapshots have been reset")
 	b.resetTxPoolSnapshot()
-	log.Warn("Tx pool snapshot has been reset")
+	log.Warn("Slot snapshots and txpool snapshot have been reset")
 }
