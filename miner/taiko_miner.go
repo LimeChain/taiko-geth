@@ -31,6 +31,7 @@ func (miner *Miner) SealBlockWith(
 }
 
 // CHANGE(limechain):
+
 // FetchTxList retrieves already pre-built list of preconf txs for specific slot and
 // non-preconf txs currently in the txpool.
 func (miner *Miner) FetchTxList(slot uint64) ([]*PreBuiltTxList, error) {
@@ -64,7 +65,8 @@ func (miner *Miner) FetchTxList(slot uint64) ([]*PreBuiltTxList, error) {
 		totalBytes += txPoolSnapshot.BytesLength
 		txs = append(txs, txPoolSnapshot.NewTxs...)
 	} else {
-		log.Error("Failed to fetch tx pool snapshot")
+		miner.worker.txSnapshotsBuilder.RevertProposedTxPoolSnapshot()
+		log.Error("Tx list is full", "slot index", common.SlotIndex(slot), "txs", txs, "gas used", totalGasUsed, "bytes length", totalBytes)
 	}
 
 	// TODO(limechain): support multiple tx lists

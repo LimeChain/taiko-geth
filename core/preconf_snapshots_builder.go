@@ -130,6 +130,20 @@ func (b *TxSnapshotsBuilder) UpdateBytesAndGasEstimate(txSlotSnapshot *types.TxS
 	rawdb.WriteTxSlotSnapshot(b.db, txSlotSnapshot.SlotIndex, txSlotSnapshot)
 }
 
+func (b *TxSnapshotsBuilder) RevertProposedTxPoolSnapshot() *types.TxPoolSnapshot {
+	b.txPoolSnapshotMu.Lock()
+	defer b.txPoolSnapshotMu.Unlock()
+
+	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(b.db)
+
+	txPoolSnapshot.NewTxs = []*types.Transaction{}
+	txPoolSnapshot.ProposedTxs = []*types.Transaction{}
+
+	rawdb.WriteTxPoolSnapshot(b.db, txPoolSnapshot)
+
+	return txPoolSnapshot
+}
+
 // resetTxSlotSnapshot resets tx snapshot for specific slot.
 func (b *TxSnapshotsBuilder) resetTxSlotSnapshot(slotIndex uint64) {
 	b.txSlotSnapshotMu.Lock(slotIndex)
