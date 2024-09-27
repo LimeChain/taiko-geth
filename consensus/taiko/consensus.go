@@ -52,7 +52,7 @@ func New(chainConfig *params.ChainConfig) *Taiko {
 		//		strings.Repeat("0", common.AddressLength*2-len(taikoL2AddressPrefix)-len(TaikoL2AddressSuffix)) +
 		//		TaikoL2AddressSuffix,
 		//),
-		taikoL2Address: common.HexToAddress("0x68694EA10e5FCe9F39256C7CEf923F097D8bcdD2"),
+		taikoL2Address: common.HexToAddress("0x4dCa6A2f8fC9a8F3e42A5426Be78bDccd9BF1eAd"),
 	}
 }
 
