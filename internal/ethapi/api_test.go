@@ -434,6 +434,10 @@ type testBackend struct {
 	acc     accounts.Account
 }
 
+func (b *testBackend) TxSnapshotsBuilder() *core.TxSnapshotsBuilder {
+	return nil
+}
+
 func newTestBackend(t *testing.T, n int, gspec *core.Genesis, engine consensus.Engine, generator func(i int, b *core.BlockGen)) *testBackend {
 	var (
 		cacheConfig = &core.CacheConfig{

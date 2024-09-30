@@ -28,7 +28,6 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/common/slocks"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/bloombits"
@@ -294,8 +293,9 @@ func newBackendMock() *backendMock {
 }
 
 // CHANGE(limechain):
-func (b backendMock) SlotEstLock() *slocks.PerSlotLocker {
-	return &slocks.PerSlotLocker{}
+
+func (b backendMock) TxSnapshotsBuilder() *core.TxSnapshotsBuilder {
+	return core.NewTxSnapshotsBuilder(b.ChainDb(), make(chan core.InvalidPreconfTxEvent))
 }
 
 func (b *backendMock) setFork(fork string) error {

@@ -363,13 +363,13 @@ func (w *worker) txSnapshotsLoop() {
 				continue
 			}
 
-			// Loop through each slot starting from the current one
-			// up to the last and update each snapshot (simulate preconf txs and store receipts).
+			// Loop through each slot and update each snapshot. We need to start from the first
+			// up to the last slot since we need to be able to simulate preconf txs and store receipts.
 			for i := uint64(0); i < uint64(common.EpochLength); i++ {
 				// Initialize the slot snapshot if it does not exist.
-				w.txSnapshotsBuilder.InitTxSlotSnapshot(i)
+				w.txSnapshotsBuilder.EnsureTxSlotSnapshot(i)
 
-				err := w.UpdateTxSnapshots(
+				err := w.UpdateTxSlotSnapshot(
 					i,
 					txListConfig.Beneficiary,
 					txListConfig.BaseFee,
@@ -382,6 +382,19 @@ func (w *worker) txSnapshotsLoop() {
 					log.Error("Tx snapshot update failed", "slot index", i, "error", err)
 					continue
 				}
+			}
+
+			// Update the tx pool snapshot with non-preconf txs.
+			err := w.UpdateTxPoolSnapshot(
+				txListConfig.Beneficiary,
+				txListConfig.BaseFee,
+				txListConfig.BlockMaxGasLimit,
+				txListConfig.MaxBytesPerTxList,
+				txListConfig.Locals,
+				txListConfig.MaxTransactionsLists,
+			)
+			if err != nil {
+				log.Error("Tx pool snapshot update failed", "error", err)
 			}
 		}
 	}
@@ -418,7 +431,7 @@ func (w *worker) logTxSnapshotsLoop() {
 
 			for i := uint64(0); i < uint64(common.EpochLength); i++ {
 				txSlotSnapshot := w.txSnapshotsBuilder.GetTxSlotSnapshot(i)
-				if txSlotSnapshot != nil && len(txSlotSnapshot.Txs) != 0 {
+				if txSlotSnapshot != nil {
 					log.Warn("Txs from slot snapshot", "slot", i, "tx count", len(txSlotSnapshot.Txs), "txs", txSlotSnapshot.Txs, "gas used", txSlotSnapshot.GasUsed, "bytes length", txSlotSnapshot.BytesLength)
 				}
 			}

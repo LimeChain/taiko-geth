@@ -1879,7 +1879,7 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction, txSnapshotsB
 	if l1GenesisTimestamp == nil {
 		return errors.New("can't validate inclusion constraints, L1 genesis timestamp is unknown")
 	}
-	currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
+	currentSlot, currentEpoch := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
 	earliestAcceptableSlot := currentSlot + common.SlotsOffsetInAdvance
 	// Do not accept txs with deadlines that are for a past or current slot,
 	// as it is not possible to include them, the deadline check must be performed in advance.
@@ -1907,19 +1907,28 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction, txSnapshotsB
 			// Check whether the block space constraints are met (gas and byte estimates).
 			if txSlotSnapshot.GasUsed+tx.Gas() > txListConfig.BlockMaxGasLimit ||
 				txSlotSnapshot.BytesLength+tx.Size() > txListConfig.MaxBytesPerTxList {
-				log.Error("inclusion tx rejected, gas or bytes limit reached", "hash", tx.Hash(), "deadline", tx.Deadline().Uint64(), "current slot", currentSlot)
+				log.Error("inclusion tx rejected, gas or bytes limit reached",
+					"hash", tx.Hash(), "deadline", tx.Deadline().Uint64(), "current slot", currentSlot,
+					"tx gas", txSlotSnapshot.GasUsed+tx.Gas(),
+					"gas limit", txListConfig.BlockMaxGasLimit,
+					"tx bytes", txSlotSnapshot.BytesLength+tx.Size(),
+					"bytes limit", txListConfig.MaxBytesPerTxList,
+				)
 				return fmt.Errorf("inclusion tx rejected, gas or bytes limit reached [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
 			}
-			txSnapshotsBuilder.UpdateBytesAndGasEstimate(txSlotSnapshot, tx.Gas(), tx.Size())
+			// txSnapshotsBuilder.UpdateBytesAndGasEstimate(txSlotSnapshot, tx.Gas(), tx.Size())
 			return nil
 		} else {
 			return fmt.Errorf("inclusion tx rejected, not assigned to propose block [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
 		}
 	}
 
-	// TODO(limechain): To be able to respond early with an error, determine
-	// how far ahead we know the slot assignment and adjust the logic to reject
-	// deadlines in future epochs where slot assignment is unknown.
+	// Disallow, currently there are 32 slot snapshots for the current epoch that are prepared in advance,
+	// thus tx with deadline for future epoch slots will wrap around to the current epoch.
+	txDeadlineEpoch := tx.Deadline().Uint64() / 32
+	if txDeadlineEpoch > currentEpoch {
+		return fmt.Errorf("inclusion rejected, too far in the future hash %s deadline %d current epoch %d", tx.Hash(), tx.Deadline(), currentEpoch)
+	}
 
 	// Deadline is for a future slot in the current epoch, and the slot assignment is known.
 	lookup := assignedSlotsLookup(assignedSlots)
@@ -1947,7 +1956,7 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction, txSnapshotsB
 		return fmt.Errorf("inclusion tx rejected, gas or bytes limit reached [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
 	}
 	log.Info("Inclusion tx for future slot", "hash", tx.Hash(), "deadline", tx.Deadline().Uint64())
-	txSnapshotsBuilder.UpdateBytesAndGasEstimate(txSlotSnapshot, tx.Gas(), tx.Size())
+	// txSnapshotsBuilder.UpdateBytesAndGasEstimate(txSlotSnapshot, tx.Gas(), tx.Size())
 	return nil
 }
 

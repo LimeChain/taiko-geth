@@ -51,9 +51,17 @@ func (miner *Miner) FetchTxList(slot uint64) ([]*PreBuiltTxList, error) {
 	slotIndex := common.SlotIndex(slot)
 	txSlotSnapshot := miner.worker.txSnapshotsBuilder.GetTxSlotSnapshot(slotIndex)
 
-	txs = append(txs, txSlotSnapshot.Txs...)
-	totalGasUsed += txSlotSnapshot.GasUsed
-	totalBytes += txSlotSnapshot.BytesLength
+	// Fetch preconf txs from slot snapshot
+	if txSlotSnapshot.GasUsed < txListConfig.BlockMaxGasLimit &&
+		txSlotSnapshot.BytesLength < txListConfig.MaxBytesPerTxList {
+
+		txs = append(txs, txSlotSnapshot.Txs...)
+		totalGasUsed += txSlotSnapshot.GasUsed
+		totalBytes += txSlotSnapshot.BytesLength
+	} else {
+		log.Error("Tx list limits reached", "slot index", common.SlotIndex(slot), "txs", txs, "gas used", totalGasUsed, "bytes length", totalBytes)
+		return nil, nil
+	}
 
 	// Fetch non-preconf txs from txpool snapshot
 	miner.worker.txSnapshotsBuilder.ProposeFromTxPoolSnapshot()
@@ -66,7 +74,7 @@ func (miner *Miner) FetchTxList(slot uint64) ([]*PreBuiltTxList, error) {
 		txs = append(txs, txPoolSnapshot.NewTxs...)
 	} else {
 		miner.worker.txSnapshotsBuilder.RevertProposedTxPoolSnapshot()
-		log.Error("Tx list is full", "slot index", common.SlotIndex(slot), "txs", txs, "gas used", totalGasUsed, "bytes length", totalBytes)
+		log.Error("Tx list limits reached", "slot index", common.SlotIndex(slot), "txs", txs, "gas used", totalGasUsed, "bytes length", totalBytes)
 	}
 
 	// TODO(limechain): support multiple tx lists

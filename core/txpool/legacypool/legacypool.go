@@ -348,6 +348,9 @@ func (pool *LegacyPool) eventLoop() {
 			return
 		case event := <-pool.invPreconfTxEventCh:
 			log.Error("Invalid preconf tx received", "tx", event.TxHash.String())
+
+			// TODO(limechain): check if this is the correct way to remove tx
+			// and also remove it from the corresponding snapshot
 			pool.mu.Lock()
 			pool.removeTx(event.TxHash, true, true)
 			pool.mu.Unlock()
