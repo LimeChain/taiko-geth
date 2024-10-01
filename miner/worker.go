@@ -422,9 +422,9 @@ func (w *worker) logTxSnapshotsLoop() {
 			for _, tx := range txs {
 				for _, tx := range tx {
 					if tx.Tx.Type() == types.InclusionPreconfirmationTxType {
-						log.Warn("Txpool tx", "type", tx.Tx.Type(), "hash", tx.Tx.Hash().Hex(), "deadline", tx.Tx.Deadline())
+						// log.Warn("Txpool tx", "type", tx.Tx.Type(), "hash", tx.Tx.Hash().Hex(), "deadline", tx.Tx.Deadline())
 					} else {
-						log.Warn("Txpool tx", "type", tx.Tx.Type(), "hash", tx.Tx.Hash().Hex())
+						// log.Warn("Txpool tx", "type", tx.Tx.Type(), "hash", tx.Tx.Hash().Hex())
 					}
 				}
 			}

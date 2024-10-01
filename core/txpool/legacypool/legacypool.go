@@ -203,14 +203,13 @@ func (config *Config) sanitize() Config {
 // current state) and future transactions. Transactions move between those
 // two states over time as they are received and processed.
 type LegacyPool struct {
-	config        Config
-	chainconfig   *params.ChainConfig
-	chain         BlockChain
-	gasTip        atomic.Pointer[uint256.Int]
-	txFeed        event.Feed
-	preconfTxFeed event.Feed
-	signer        types.Signer
-	mu            sync.RWMutex
+	config      Config
+	chainconfig *params.ChainConfig
+	chain       BlockChain
+	gasTip      atomic.Pointer[uint256.Int]
+	txFeed      event.Feed
+	signer      types.Signer
+	mu          sync.RWMutex
 
 	currentHead   atomic.Pointer[types.Header] // Current head of the blockchain
 	currentState  *state.StateDB               // Current state in the blockchain head
@@ -226,8 +225,6 @@ type LegacyPool struct {
 	all     *lookup                      // All transactions to allow lookups
 	priced  *pricedList                  // All transactions sorted by price
 
-	invPreconfTxEventCh chan core.InvalidPreconfTxEvent
-
 	reqResetCh      chan *txpoolResetRequest
 	reqPromoteCh    chan *accountSet
 	queueTxEventCh  chan *types.Transaction
@@ -237,6 +234,10 @@ type LegacyPool struct {
 	initDoneCh      chan struct{}  // is closed once the pool is initialized (for tests)
 
 	changesSinceReorg int // A counter for how many drops we've performed in-between reorg.
+
+	// CHANGE(limechain):
+	preconfTxFeed       event.Feed
+	invPreconfTxEventCh chan core.InvalidPreconfTxEvent
 }
 
 type txpoolResetRequest struct {
@@ -332,6 +333,7 @@ func (pool *LegacyPool) Init(gasTip uint64, head *types.Header, reserve txpool.A
 			log.Warn("Failed to rotate transaction journal", "err", err)
 		}
 	}
+	// CHANGE(limechain):
 	pool.preconfTxFeed.Subscribe(pool.invPreconfTxEventCh)
 	pool.wg.Add(2)
 	go pool.eventLoop()
@@ -339,6 +341,7 @@ func (pool *LegacyPool) Init(gasTip uint64, head *types.Header, reserve txpool.A
 	return nil
 }
 
+// CHANGE(limechain):
 func (pool *LegacyPool) eventLoop() {
 	defer pool.wg.Done()
 

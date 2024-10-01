@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -71,7 +72,7 @@ func (w *worker) sealBlockWith(
 	env.gasPool = new(core.GasPool).AddGas(gasLimit)
 
 	for i, tx := range txs {
-		log.Warn("Seal tx", "index", i, "hash", tx.Hash().String())
+		// log.Warn("Seal tx", "index", i, "hash", tx.Hash().String())
 		if i == 0 {
 			if err := tx.MarkAsAnchor(); err != nil {
 				return nil, err
@@ -346,10 +347,24 @@ func (w *worker) getPendingPreconfTxs(localAccounts []string, baseFee *big.Int, 
 
 	preconfTxs := make(map[common.Address][]*txpool.LazyTransaction)
 
+	// TODO(limechain): pass it from outside
+	l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(w.eth.BlockChain().DB())
+	if l1GenesisTimestamp == nil {
+		log.Error("L1 genesis timestamp is unknown")
+	}
+
 	for addr, txs := range pending {
+		_, currentEpoch := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
 		for _, tx := range txs {
-			if tx.Tx.Type() == types.InclusionPreconfirmationTxType && common.SlotIndex(tx.Tx.Deadline().Uint64()) <= slotIndex {
-				preconfTxs[addr] = append(preconfTxs[addr], tx)
+			txDeadlineSlot := tx.Tx.Deadline().Uint64()
+			txDeadlineEpoch := txDeadlineSlot / uint64(common.EpochLength)
+
+			if tx.Tx.Type() == types.InclusionPreconfirmationTxType && common.SlotIndex(txDeadlineSlot) <= slotIndex {
+				if txDeadlineEpoch > currentEpoch {
+					// do not pick this tx until the next epoch since we maintain only 32 slot snapshot for the current epoch
+				} else {
+					preconfTxs[addr] = append(preconfTxs[addr], tx)
+				}
 			}
 		}
 	}
@@ -382,8 +397,8 @@ func (w *worker) getPendingNonPreconfTxs(localAccounts []string, baseFee *big.In
 			if tx.Tx.Type() == types.InclusionPreconfirmationTxType {
 				hasPreconfTxs = true
 			} else {
-				// if addrs has preconf txs before the non-preconf tx, then
-				// delay the non-preconf txs preconf txs are processed.
+				// if address has preconf txs before the non-preconf tx, then
+				// delay the non-preconf txs until preconfs are processed.
 				if !hasPreconfTxs {
 					nonPreconfTxs[addr] = append(nonPreconfTxs[addr], tx)
 				}

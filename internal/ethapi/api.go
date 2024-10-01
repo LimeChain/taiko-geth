@@ -1879,7 +1879,7 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction, txSnapshotsB
 	if l1GenesisTimestamp == nil {
 		return errors.New("can't validate inclusion constraints, L1 genesis timestamp is unknown")
 	}
-	currentSlot, currentEpoch := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
+	currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
 	earliestAcceptableSlot := currentSlot + common.SlotsOffsetInAdvance
 	// Do not accept txs with deadlines that are for a past or current slot,
 	// as it is not possible to include them, the deadline check must be performed in advance.
@@ -1921,13 +1921,6 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction, txSnapshotsB
 		} else {
 			return fmt.Errorf("inclusion tx rejected, not assigned to propose block [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
 		}
-	}
-
-	// Disallow, currently there are 32 slot snapshots for the current epoch that are prepared in advance,
-	// thus tx with deadline for future epoch slots will wrap around to the current epoch.
-	txDeadlineEpoch := tx.Deadline().Uint64() / 32
-	if txDeadlineEpoch > currentEpoch {
-		return fmt.Errorf("inclusion rejected, too far in the future hash %s deadline %d current epoch %d", tx.Hash(), tx.Deadline(), currentEpoch)
 	}
 
 	// Deadline is for a future slot in the current epoch, and the slot assignment is known.
