@@ -350,12 +350,11 @@ func (pool *LegacyPool) eventLoop() {
 		case <-pool.reorgShutdownCh:
 			return
 		case event := <-pool.invPreconfTxEventCh:
-			log.Error("Invalid preconf tx received", "tx", event.TxHash.String())
-
 			// TODO(limechain): check if this is the correct way to remove tx
 			// and also remove it from the corresponding snapshot
 			pool.mu.Lock()
 			pool.removeTx(event.TxHash, true, true)
+			// log.Error("Invalid preconf tx removed from pool", "hash", event.TxHash.String(), "count", n)
 			pool.mu.Unlock()
 		}
 	}
@@ -1135,7 +1134,6 @@ func (pool *LegacyPool) Has(hash common.Hash) bool {
 //
 // Returns the number of transactions removed from the pending queue.
 func (pool *LegacyPool) removeTx(hash common.Hash, outofbound bool, unreserve bool) int {
-	log.Info("Tx is removed from the pool", "hash", hash.String())
 	// Fetch the transaction we wish to delete
 	tx := pool.all.Get(hash)
 	if tx == nil {

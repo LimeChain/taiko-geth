@@ -1695,7 +1695,7 @@ func (s *TransactionAPI) GetTransactionReceipt(ctx context.Context, hash common.
 		if preconfReceipt != nil {
 			return s.marshalPreconfReceipt(preconfReceipt), nil
 		}
-		log.Error("Preconf tx receipt not found")
+		// log.Error("Preconf tx receipt not found")
 	}
 
 	if err != nil {
@@ -1848,7 +1848,7 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 			return common.Hash{}, err
 		}
 		if tx.Nonce() > nonce {
-			return common.Hash{}, fmt.Errorf("inclusion tx nonce gap is not allowed, tx nonce: [%d], pool nonce: [%d]", nonce, tx.Nonce())
+			return common.Hash{}, fmt.Errorf("inclusion tx nonce gap is not allowed, tx nonce: [%d], pool nonce: [%d]", tx.Nonce(), nonce)
 		}
 	}
 
@@ -1948,7 +1948,7 @@ func validateInclusionConstraints(b Backend, tx *types.Transaction, txSnapshotsB
 		futureTxSlotSnapshot.BytesLength+tx.Size() > txListConfig.MaxBytesPerTxList {
 		return fmt.Errorf("inclusion tx rejected, gas or bytes limit reached [hash %s deadline %d current slot %d]", tx.Hash(), tx.Deadline().Uint64(), currentSlot)
 	}
-	log.Info("Inclusion tx for future slot", "hash", tx.Hash(), "deadline", tx.Deadline().Uint64())
+	// log.Info("Inclusion tx for future slot", "hash", tx.Hash(), "deadline", tx.Deadline().Uint64())
 	// txSnapshotsBuilder.UpdateBytesAndGasEstimate(txSlotSnapshot, tx.Gas(), tx.Size())
 	return nil
 }

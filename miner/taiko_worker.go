@@ -126,8 +126,6 @@ func (w *worker) UpdateTxSlotSnapshot(
 	localAccounts []string,
 	maxTransactionsLists uint64,
 ) error {
-	// log.Info("Prepare slot snapshot", "slot index", snapshotSlot)
-
 	currentHead := w.chain.CurrentBlock()
 	if currentHead == nil {
 		return fmt.Errorf("failed to find current head")
@@ -198,8 +196,6 @@ func (w *worker) UpdateTxSlotSnapshot(
 		totalBytes := uint64(len(b))
 		totalGas := env.header.GasLimit - env.gasPool.Gas()
 
-		// log.Error("Up to current slot totals", "gas", totalGas, "bytes", totalBytes)
-
 		// Calculate gas and bytes usage based on the difference
 		// between current and previous slot snapshots.
 		var (
@@ -211,12 +207,15 @@ func (w *worker) UpdateTxSlotSnapshot(
 			prevTotalBytes += txSlotSnapshot.BytesLength
 		}
 
-		// log.Error("Up to previous slot totals", "gas", prevTotalGas, "bytes", prevTotalBytes)
-
 		currentSlotGas := totalGas - prevTotalGas
 		currentSlotBytes := totalBytes - prevTotalBytes
 
-		// log.Error("Current slot totals", "slot index", snapshotSlot, "gas", currentSlotGas, "bytes", currentSlotBytes)
+		if totalGas < prevTotalGas {
+			currentSlotGas = 0
+		}
+		if totalBytes < prevTotalBytes {
+			currentSlotBytes = 0
+		}
 
 		// all txs for specific slot have been executed, reset tx slot snapshot
 		if currentSlotGas == 0 {
@@ -225,6 +224,11 @@ func (w *worker) UpdateTxSlotSnapshot(
 
 		// Update the slot snapshot with only txs for the current slot.
 		txSlotSnapshot := w.txSnapshotsBuilder.UpdateTxSlotSnapshot(snapshotSlot, env.txs, currentSlotBytes, currentSlotGas)
+
+		// TODO(limechain): remove this log
+		if txSlotSnapshot != nil && len(txSlotSnapshot.Txs) > 0 {
+			log.Warn("Txs from slot snapshot", "slot", snapshotSlot, "tx count", len(txSlotSnapshot.Txs), "txs", txSlotSnapshot.Txs, "gas used", txSlotSnapshot.GasUsed, "bytes length", txSlotSnapshot.BytesLength)
+		}
 
 		return txSlotSnapshot, nil
 	}
@@ -251,8 +255,6 @@ func (w *worker) UpdateTxPoolSnapshot(
 	localAccounts []string,
 	maxTransactionsLists uint64,
 ) error {
-	// log.Info("Prepare slot snapshot", "slot index", snapshotSlot)
-
 	currentHead := w.chain.CurrentBlock()
 	if currentHead == nil {
 		return fmt.Errorf("failed to find current head")
@@ -320,6 +322,14 @@ func (w *worker) UpdateTxPoolSnapshot(
 		gasUsed := env.header.GasLimit - env.gasPool.Gas()
 
 		txPoolSnapshot := w.txSnapshotsBuilder.UpdateTxPoolSnapshot(env.txs, uint64(len(b)), gasUsed)
+
+		// TODO(limechain): remove this log
+		if txPoolSnapshot != nil && (len(txPoolSnapshot.PendingTxs) != 0 || len(txPoolSnapshot.ProposedTxs) != 0 || len(txPoolSnapshot.NewTxs) != 0) {
+			log.Warn("Txs from pool snapshot", "pending tx count", len(txPoolSnapshot.PendingTxs), "txs", txPoolSnapshot.PendingTxs)
+			log.Warn("Txs from pool snapshot", "proposed tx count", len(txPoolSnapshot.ProposedTxs), "txs", txPoolSnapshot.ProposedTxs)
+			log.Warn("Txs from pool snapshot", "new tx count", len(txPoolSnapshot.NewTxs), "txs", txPoolSnapshot.NewTxs)
+			log.Warn("Txs from pool snapshot", "gas used", txPoolSnapshot.GasUsed, "bytes length", txPoolSnapshot.BytesLength)
+		}
 
 		return txPoolSnapshot, nil
 	}

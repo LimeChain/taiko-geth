@@ -84,6 +84,6 @@ func (miner *Miner) FetchTxList(slot uint64) ([]*PreBuiltTxList, error) {
 		BytesLength:      totalBytes,
 	}
 
-	log.Error("Fetch tx list", "slot index", common.SlotIndex(slot), "txs", txs, "gas used", totalGasUsed, "bytes length", totalBytes)
+	log.Error("Fetch tx list to propose", "slot index", common.SlotIndex(slot), "txs", txs, "gas used", totalGasUsed, "bytes length", totalBytes)
 	return []*PreBuiltTxList{txList}, nil
 }

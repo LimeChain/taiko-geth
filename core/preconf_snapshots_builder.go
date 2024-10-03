@@ -72,9 +72,6 @@ func (b *TxSnapshotsBuilder) GetTxSlotSnapshot(slotIndex uint64) *types.TxSlotSn
 
 // UpdateTxSlotSnapshot updates the slot snapshot with the new txs.
 func (b *TxSnapshotsBuilder) UpdateTxSlotSnapshot(slotIndex uint64, txs []*types.Transaction, bytes uint64, gas uint64) *types.TxSlotSnapshot {
-	b.txSlotSnapshotMu.Lock(slotIndex)
-	defer b.txSlotSnapshotMu.Unlock(slotIndex)
-
 	l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(b.db)
 	if l1GenesisTimestamp == nil {
 		log.Error("Failed to fetch L1 genesis timestamp")
@@ -82,13 +79,10 @@ func (b *TxSnapshotsBuilder) UpdateTxSlotSnapshot(slotIndex uint64, txs []*types
 	}
 	currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
 
-	txSlotSnapshot := rawdb.ReadTxSlotSnapshot(b.db, slotIndex)
+	b.txSlotSnapshotMu.Lock(slotIndex)
+	defer b.txSlotSnapshotMu.Unlock(slotIndex)
 
-	// TODO(limechain): do not reset past slots until new epoch change
-	// since we need previous snapshots for gas/bytes calculations
-	// if b.resetPastTxSlotSnapshot(slotIndex, currentSlot) {
-	// 	return nil // txSlotSnapshot
-	// }
+	txSlotSnapshot := rawdb.ReadTxSlotSnapshot(b.db, slotIndex)
 
 	// Short term cache to speed up the lookup.
 	loadTxsInCache(b, slotIndex, txSlotSnapshot)
@@ -101,13 +95,11 @@ func (b *TxSnapshotsBuilder) UpdateTxSlotSnapshot(slotIndex uint64, txs []*types
 				b.preconfTxFeed.Send(InvalidPreconfTxEvent{TxHash: tx.Hash()})
 				continue
 			}
-
 			// Skip inclusion preconfirmation txs that are not for the slot
 			// we are currently updating.
 			if common.SlotIndex(tx.Deadline().Uint64()) != slotIndex {
 				continue
 			}
-
 			if !b.txSlotCache[slotIndex][tx.Hash()] {
 				txSlotSnapshot.Txs = append(txSlotSnapshot.Txs, tx)
 				b.txSlotCache[slotIndex][tx.Hash()] = true
@@ -196,9 +188,8 @@ func (b *TxSnapshotsBuilder) GetTxPoolSnapshot() *types.TxPoolSnapshot {
 // UpdateTxPoolSnapshot updates the tx pool snapshot with the new txs.
 func (b *TxSnapshotsBuilder) UpdateTxPoolSnapshot(txs []*types.Transaction, bytes uint64, gas uint64) *types.TxPoolSnapshot {
 	b.txPoolSnapshotMu.Lock()
-	defer b.txPoolSnapshotMu.Unlock()
-
 	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(b.db)
+	b.txPoolSnapshotMu.Unlock()
 	if txPoolSnapshot == nil {
 		// Initialize the tx pool snapshot
 		log.Info("Initialize tx pool snapshot")
@@ -207,6 +198,9 @@ func (b *TxSnapshotsBuilder) UpdateTxPoolSnapshot(txs []*types.Transaction, byte
 
 	// Short lived cache to speed up the lookup
 	loadPendingInCache(b, txPoolSnapshot)
+
+	b.txPoolSnapshotMu.Lock()
+	defer b.txPoolSnapshotMu.Unlock()
 
 	for _, tx := range txs {
 		if tx.Type() != types.InclusionPreconfirmationTxType {
@@ -339,5 +333,5 @@ func (b *TxSnapshotsBuilder) ResetAllTxSnapshots() {
 		b.ResetTxSlotSnapshot(uint64(i))
 	}
 	b.resetTxPoolSnapshot()
-	log.Warn("Slot snapshots and txpool snapshot have been reset")
+	log.Warn("Reset slot snapshots and txpool snapshot")
 }

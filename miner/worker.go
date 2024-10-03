@@ -299,14 +299,12 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	}
 	worker.newpayloadTimeout = newpayloadTimeout
 
-	worker.wg.Add(6)
+	worker.wg.Add(5)
 	go worker.mainLoop()
 	go worker.newWorkLoop(recommit)
 	go worker.resultLoop()
 	go worker.taskLoop()
 	go worker.txSnapshotsLoop()
-	// TODO(limechain): remove, just for debugging purposes
-	go worker.logTxSnapshotsLoop()
 
 	// Submit first work to initialize pending state.
 	if init {
@@ -326,14 +324,15 @@ func (w *worker) txSnapshotsLoop() {
 		case <-w.exitCh:
 			return
 		default:
-			time.Sleep(1 * time.Second)
-
 			db := w.eth.BlockChain().DB()
+
+			waitDuration := 1 * time.Second
 
 			// Fetch tx list configuration to use for tx snapshot updates.
 			txListConfig := rawdb.ReadTxListConfig(db)
 			if txListConfig == nil {
 				log.Error("Failed to fetch tx list config")
+				time.Sleep(waitDuration)
 				continue
 			}
 
@@ -341,14 +340,15 @@ func (w *worker) txSnapshotsLoop() {
 			l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(db)
 			if l1GenesisTimestamp == nil {
 				log.Error("Failed to fetch L1 genesis timestamp")
+				time.Sleep(waitDuration)
 				continue
 			}
+
 			currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
 			earliestAcceptableSlot := currentSlot + common.SlotsOffsetInAdvance
 			slotIndex := common.SlotIndex(earliestAcceptableSlot)
-
 			log.Info(
-				"Tx snapshots loop started",
+				"Update tx slot snapshots",
 				"current slot index", slotIndex,
 				"current slot", earliestAcceptableSlot,
 				"beneficiary", txListConfig.Beneficiary,
@@ -357,11 +357,13 @@ func (w *worker) txSnapshotsLoop() {
 				"max bytes per tx list", txListConfig.MaxBytesPerTxList,
 			)
 
-			// Reset all snapshots if the tx pool is empty.
-			if len(w.eth.TxPool().Pending(txpool.PendingFilter{BaseFee: uint256.MustFromBig(txListConfig.BaseFee), OnlyPlainTxs: true})) == 0 {
+			pendingPoolTxs := w.eth.TxPool().Pending(txpool.PendingFilter{BaseFee: uint256.MustFromBig(txListConfig.BaseFee), OnlyPlainTxs: true})
+			if len(pendingPoolTxs) == 0 {
 				w.txSnapshotsBuilder.ResetAllTxSnapshots()
+				time.Sleep(waitDuration)
 				continue
 			}
+			log.Info("Tx pool content", "txs count", len(pendingPoolTxs))
 
 			// Loop through each slot and update each snapshot. We need to start from the first
 			// up to the last slot since we need to be able to simulate preconf txs and store receipts.
@@ -379,7 +381,7 @@ func (w *worker) txSnapshotsLoop() {
 					txListConfig.MaxTransactionsLists,
 				)
 				if err != nil {
-					log.Error("Tx snapshot update failed", "slot index", i, "error", err)
+					log.Error("Tx slot snapshot update failed", "slot index", i, "error", err)
 					continue
 				}
 			}
@@ -395,54 +397,11 @@ func (w *worker) txSnapshotsLoop() {
 			)
 			if err != nil {
 				log.Error("Tx pool snapshot update failed", "error", err)
-			}
-		}
-	}
-}
-
-func (w *worker) logTxSnapshotsLoop() {
-	defer w.wg.Done()
-
-	for {
-		select {
-		case <-w.exitCh:
-			return
-		default:
-			time.Sleep(1 * time.Second)
-
-			db := w.eth.BlockChain().DB()
-
-			txListConfig := rawdb.ReadTxListConfig(db)
-			if txListConfig == nil {
-				log.Error("Failed to fetch tx list config")
+				time.Sleep(waitDuration)
 				continue
 			}
 
-			txs := w.eth.TxPool().Pending(txpool.PendingFilter{BaseFee: uint256.MustFromBig(txListConfig.BaseFee), OnlyPlainTxs: true})
-			for _, tx := range txs {
-				for _, tx := range tx {
-					if tx.Tx.Type() == types.InclusionPreconfirmationTxType {
-						// log.Warn("Txpool tx", "type", tx.Tx.Type(), "hash", tx.Tx.Hash().Hex(), "deadline", tx.Tx.Deadline())
-					} else {
-						// log.Warn("Txpool tx", "type", tx.Tx.Type(), "hash", tx.Tx.Hash().Hex())
-					}
-				}
-			}
-
-			for i := uint64(0); i < uint64(common.EpochLength); i++ {
-				txSlotSnapshot := w.txSnapshotsBuilder.GetTxSlotSnapshot(i)
-				if txSlotSnapshot != nil {
-					log.Warn("Txs from slot snapshot", "slot", i, "tx count", len(txSlotSnapshot.Txs), "txs", txSlotSnapshot.Txs, "gas used", txSlotSnapshot.GasUsed, "bytes length", txSlotSnapshot.BytesLength)
-				}
-			}
-
-			txPoolSnapshot := w.txSnapshotsBuilder.GetTxPoolSnapshot()
-			if txPoolSnapshot != nil && (len(txPoolSnapshot.PendingTxs) != 0 || len(txPoolSnapshot.ProposedTxs) != 0 || len(txPoolSnapshot.NewTxs) != 0) {
-				log.Warn("Txs from pool snapshot", "pending tx count", len(txPoolSnapshot.PendingTxs), "txs", txPoolSnapshot.PendingTxs)
-				log.Warn("Txs from pool snapshot", "proposed tx count", len(txPoolSnapshot.ProposedTxs), "txs", txPoolSnapshot.ProposedTxs)
-				log.Warn("Txs from pool snapshot", "new tx count", len(txPoolSnapshot.NewTxs), "txs", txPoolSnapshot.NewTxs)
-				log.Warn("Txs from pool snapshot", "gas used", txPoolSnapshot.GasUsed, "bytes length", txPoolSnapshot.BytesLength)
-			}
+			time.Sleep(waitDuration)
 		}
 	}
 }

@@ -230,14 +230,14 @@ func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, op
 	// other type of txs in the pool that might not get included in the block
 	pendingTxs := opts.PendingTxs(from)
 	pendingTxsCount := len(pendingTxs)
-	log.Info("ValidateTransactionWithState", "pending tx count", pendingTxsCount)
+	// log.Info("ValidateTransactionWithState", "pending tx count", pendingTxsCount, "enqueued tx count", enqueuedTxsCount)
 	if pendingTxsCount > 0 {
 		lastTx := pendingTxs[pendingTxsCount-1]
 
-		log.Info("ValidateTransactionWithState",
-			"last tx hash", lastTx.Hash(), "last tx type", lastTx.Type(), "last tx nonce", lastTx.Nonce(),
-			"current tx hash", tx.Hash(), "current tx type", tx.Type(), "current tx nonce", tx.Nonce(),
-		)
+		// log.Info("ValidateTransactionWithState",
+		// 	"last tx hash", lastTx.Hash(), "last tx type", lastTx.Type(), "last tx nonce", lastTx.Nonce(),
+		// 	"current tx hash", tx.Hash(), "current tx type", tx.Type(), "current tx nonce", tx.Nonce(),
+		// )
 
 		if lastTx.Type() != types.InclusionPreconfirmationTxType && tx.Type() == types.InclusionPreconfirmationTxType {
 			err := fmt.Errorf("%w: hash %v type %v nonce %v", core.ErrUnableToPreconfirmTx, tx.Hash(), tx.Type(), tx.Nonce())
