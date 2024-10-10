@@ -230,12 +230,14 @@ func (s preconfSigner) Hash(tx *Transaction) common.Hash {
 	if tx.Type() != InclusionPreconfirmationTxType {
 		return s.cancunSigner.Hash(tx)
 	}
+
 	return prefixedRlpHash(
 		tx.Type(),
 		[]interface{}{
 			s.chainId,
 			tx.Nonce(),
-			tx.GasPrice(),
+			tx.GasTipCap(),
+			tx.GasFeeCap(),
 			tx.Gas(),
 			tx.To(),
 			tx.Value(),
