@@ -51,9 +51,10 @@ func (ec *EthClient) FetchCurrentSlot(now int64) (uint64, uint64, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	currentSlot, _ := common.CurrentSlotAndEpoch(l1GenesisTimestamp, now)
-	_, currentSlotEndTime := common.CurrentSlotStartEndTime(l1GenesisTimestamp, now)
-	return currentSlot, currentSlotEndTime, nil
+	headSlot, _ := common.HeadSlotAndEpoch(l1GenesisTimestamp, now)
+	currentSlot := headSlot + 1
+	_, headSlotEndTime := common.HeadSlotStartEndTime(l1GenesisTimestamp, now)
+	return currentSlot, headSlotEndTime, nil
 }
 
 func (ec *EthClient) GetNonce(account *Account) (uint64, error) {

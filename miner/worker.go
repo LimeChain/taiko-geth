@@ -326,7 +326,10 @@ func (w *worker) txSnapshotsLoop() {
 		default:
 			db := w.eth.BlockChain().DB()
 
-			waitDuration := 1 * time.Second
+			// There are time restrictions for submitting/proposing preconf txs,
+			// which occur within seconds. Therefore, it is essential to update
+			// snapshots in a timely manner.
+			waitDuration := 500 * time.Millisecond
 
 			// Fetch tx list configuration to use for tx snapshot updates.
 			txListConfig := rawdb.ReadTxListConfig(db)
@@ -344,13 +347,13 @@ func (w *worker) txSnapshotsLoop() {
 				continue
 			}
 
-			currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
-			earliestAcceptableSlot := currentSlot + common.SlotsOffsetInAdvance
-			slotIndex := common.SlotIndex(earliestAcceptableSlot)
+			headSlot, _ := common.HeadSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
+			currentSlot := headSlot + 1
+			slotIndex := common.SlotIndex(currentSlot)
 			log.Info(
 				"Update tx slot snapshots",
 				"current slot index", slotIndex,
-				"current slot", earliestAcceptableSlot,
+				"current slot", currentSlot,
 				"beneficiary", txListConfig.Beneficiary,
 				"base fee", txListConfig.BaseFee,
 				"block max gas limit", txListConfig.BlockMaxGasLimit,

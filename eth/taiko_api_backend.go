@@ -117,7 +117,8 @@ func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
 	rawdb.WriteL1GenesisTimestamp(db, l1GenesisTimestamp)
 	rawdb.WriteTxListConfig(db, txListConfig)
 
-	currentSlot, _ := common.CurrentSlotAndEpoch(l1GenesisTimestamp, time.Now().Unix())
+	headSlot, _ := common.HeadSlotAndEpoch(l1GenesisTimestamp, time.Now().Unix())
+	currentSlot := headSlot + 1
 
 	storedSlots := rawdb.ReadAssignedL1Slots(db)
 	slotsCache := make(map[uint64]bool)

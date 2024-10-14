@@ -354,7 +354,7 @@ func (pool *LegacyPool) eventLoop() {
 			// and also remove it from the corresponding snapshot
 			pool.mu.Lock()
 			pool.removeTx(event.TxHash, true, true)
-			// log.Error("Invalid preconf tx removed from pool", "hash", event.TxHash.String(), "count", n)
+			log.Error("Invalid preconf tx removed from pool", "hash", event.TxHash.String())
 			pool.mu.Unlock()
 		}
 	}

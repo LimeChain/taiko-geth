@@ -77,7 +77,7 @@ func (b *TxSnapshotsBuilder) UpdateTxSlotSnapshot(slotIndex uint64, txs []*types
 		log.Error("Failed to fetch L1 genesis timestamp")
 		return nil
 	}
-	currentSlot, _ := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
+	headSlot, _ := common.HeadSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
 
 	b.txSlotSnapshotMu.Lock(slotIndex)
 	defer b.txSlotSnapshotMu.Unlock(slotIndex)
@@ -91,7 +91,7 @@ func (b *TxSnapshotsBuilder) UpdateTxSlotSnapshot(slotIndex uint64, txs []*types
 		// Only preconfirmation txs are stored in the slot snapshot.
 		if tx.Type() == types.InclusionPreconfirmationTxType {
 			// Remove preconfirmation txs for slot deadlines that have already passed.
-			if tx.Deadline().Uint64() < currentSlot {
+			if headSlot > tx.Deadline().Uint64() {
 				b.preconfTxFeed.Send(InvalidPreconfTxEvent{TxHash: tx.Hash()})
 				continue
 			}

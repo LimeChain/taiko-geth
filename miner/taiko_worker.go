@@ -227,7 +227,7 @@ func (w *worker) UpdateTxSlotSnapshot(
 
 		// TODO(limechain): remove this log
 		if txSlotSnapshot != nil && len(txSlotSnapshot.Txs) > 0 {
-			log.Warn("Txs from slot snapshot", "slot", snapshotSlot, "tx count", len(txSlotSnapshot.Txs), "txs", txSlotSnapshot.Txs, "gas used", txSlotSnapshot.GasUsed, "bytes length", txSlotSnapshot.BytesLength)
+			log.Warn("Txs from slot snapshot", "slot index", snapshotSlot, "tx count", len(txSlotSnapshot.Txs), "txs", txSlotSnapshot.Txs, "gas used", txSlotSnapshot.GasUsed, "bytes length", txSlotSnapshot.BytesLength)
 		}
 
 		return txSlotSnapshot, nil
@@ -364,7 +364,8 @@ func (w *worker) getPendingPreconfTxs(localAccounts []string, baseFee *big.Int, 
 	}
 
 	for addr, txs := range pending {
-		_, currentEpoch := common.CurrentSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
+		// TODO(limechain): this epoch is from the head slot, check the boundary conditions
+		_, currentEpoch := common.HeadSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
 		for _, tx := range txs {
 			txDeadlineSlot := tx.Tx.Deadline().Uint64()
 			txDeadlineEpoch := txDeadlineSlot / uint64(common.EpochLength)

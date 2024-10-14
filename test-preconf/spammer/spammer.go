@@ -10,7 +10,6 @@ import (
 
 	"github.com/charmbracelet/log"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -187,7 +186,7 @@ func CalculateFirstAcceptableSlot(currentSlot uint64, assignedSlots []uint64) *b
 
 	var firstAcceptableSlot uint64
 	for _, slot := range assignedSlots {
-		if slot >= currentSlot+common.SlotsOffsetInAdvance {
+		if slot >= currentSlot {
 			firstAcceptableSlot = slot
 			break
 		}
