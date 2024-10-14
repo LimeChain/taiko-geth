@@ -350,8 +350,7 @@ func (pool *LegacyPool) eventLoop() {
 		case <-pool.reorgShutdownCh:
 			return
 		case event := <-pool.invPreconfTxEventCh:
-			// TODO(limechain): check if this is the correct way to remove tx
-			// and also remove it from the corresponding snapshot
+			// TODO(limechain): remove it from the corresponding snapshot
 			pool.mu.Lock()
 			pool.removeTx(event.TxHash, true, true)
 			log.Error("Invalid preconf tx removed from pool", "hash", event.TxHash.String())

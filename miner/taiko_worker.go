@@ -364,15 +364,22 @@ func (w *worker) getPendingPreconfTxs(localAccounts []string, baseFee *big.Int, 
 	}
 
 	for addr, txs := range pending {
-		// TODO(limechain): this epoch is from the head slot, check the boundary conditions
-		_, currentEpoch := common.HeadSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
+		headSlot, headEpoch := common.HeadSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
+		currentSlot := headSlot + 1
+
 		for _, tx := range txs {
 			txDeadlineSlot := tx.Tx.Deadline().Uint64()
 			txDeadlineEpoch := txDeadlineSlot / uint64(common.EpochLength)
+			// When it is the first slot (index 0) from the current epoch
+			if common.SlotIndex(txDeadlineSlot) == 0 && txDeadlineSlot == currentSlot {
+				txDeadlineEpoch -= 1
+			}
 
+			// Get preconf txs up to the current slot for per-slot simulation and gas estimation.
 			if tx.Tx.Type() == types.InclusionPreconfirmationTxType && common.SlotIndex(txDeadlineSlot) <= slotIndex {
-				if txDeadlineEpoch > currentEpoch {
-					// do not pick this tx until the next epoch since we maintain only 32 slot snapshot for the current epoch
+				// Future epoch and slot
+				if txDeadlineEpoch > headEpoch {
+					// Do not pick this tx until the next epoch since we maintain only 32 slot snapshot for the current epoch
 				} else {
 					preconfTxs[addr] = append(preconfTxs[addr], tx)
 				}
