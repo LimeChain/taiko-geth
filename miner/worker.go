@@ -347,13 +347,19 @@ func (w *worker) txSnapshotsLoop() {
 				continue
 			}
 
+			// Keeps track of the l2 block to l1 slot offset.
 			headSlot, _ := common.HeadSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
-			currentSlot := headSlot + 1
-			slotIndex := common.SlotIndex(currentSlot)
+			latestL2Block := w.eth.BlockChain().CurrentBlock()
+			blockSlotOffset := headSlot - latestL2Block.Number.Uint64()
+			rawdb.WriteL2BlockToL1SlotOffset(db, blockSlotOffset)
+
 			log.Info(
 				"Update tx slot snapshots",
-				"current slot index", slotIndex,
-				"current slot", currentSlot,
+				"current slot index", common.SlotIndex(headSlot+1),
+				"current slot", headSlot+1,
+				"head slot", headSlot,
+				"latest block", latestL2Block.Number,
+				"l2 block to l1 slot offset", blockSlotOffset,
 				"beneficiary", txListConfig.Beneficiary,
 				"base fee", txListConfig.BaseFee,
 				"block max gas limit", txListConfig.BlockMaxGasLimit,
@@ -880,7 +886,19 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 		if head := w.chain.CurrentHeader(); head != nil && head.BaseFee != nil {
 			receipt.EffectiveGasPrice = tx.EffectiveGasTipValue(head.BaseFee)
 		}
-		rawdb.WritePreconfReceipt(w.eth.BlockChain().DB(), receipt, &from, to)
+		db := w.eth.BlockChain().DB()
+
+		// There might be a scenario where we would need to overwrite the preconf receipt
+		storedPreconfReceipt := rawdb.ReadPreconfReceipt(db, tx.Hash())
+		if storedPreconfReceipt == nil {
+			blockSlotOffset := rawdb.ReadL2BlockToL1SlotOffset(db)
+			if blockSlotOffset == nil {
+				log.Error("Failed to fetch block slot offset")
+			} else {
+				receipt.BlockNumber = big.NewInt(int64(tx.Deadline().Uint64() - *blockSlotOffset))
+			}
+			rawdb.WritePreconfReceipt(db, receipt, &from, to)
+		}
 		// log.Info("Store inclusion preconfirmation tx receipt", "index", receipt.TransactionIndex, "hash", tx.Hash().String(), "from", from.String(), "to", to.String())
 	}
 

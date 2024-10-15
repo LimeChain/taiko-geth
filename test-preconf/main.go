@@ -12,12 +12,12 @@ func main() {
 	logger.SetReportTimestamp(false)
 
 	spammer := spammer.New(url, chainID, logger, accounts, maxTxsPerAccount)
-	// send automatically generated txs
 
-	spammer.Start(txDefaults)
+	// send automatically generated txs
+	// spammer.Start(txDefaults)
 
 	// send manually preapred txs
-	// spammer.SendPreparedTxs(txsPerAccount, txDefaults)
+	spammer.SendPreparedTxs(txsPerAccount, txDefaults)
 
 	// sendSingleTx()
 }
