@@ -259,6 +259,10 @@ type BlockChain struct {
 	processor  Processor // Block transaction processor interface
 	forker     *ForkChoice
 	vmConfig   vm.Config
+
+	// CHANGE(limechain):
+	invPreconfTxCh     chan InvalidPreconfTxEvent
+	txSnapshotsBuilder *TxSnapshotsBuilder
 }
 
 // NewBlockChain returns a fully initialised block chain using information
@@ -302,7 +306,10 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		futureBlocks:  lru.NewCache[common.Hash, *types.Block](maxFutureBlocks),
 		engine:        engine,
 		vmConfig:      vmConfig,
+		// CHANGE(limechain):
+		invPreconfTxCh: make(chan InvalidPreconfTxEvent),
 	}
+	bc.txSnapshotsBuilder = NewTxSnapshotsBuilder(db, bc.invPreconfTxCh)
 	bc.flushInterval.Store(int64(cacheConfig.TrieTimeLimit))
 	bc.forker = NewForkChoice(bc, shouldPreserve)
 	bc.stateCache = state.NewDatabaseWithNodeDB(bc.db, bc.triedb)
@@ -2460,7 +2467,16 @@ func (bc *BlockChain) GetTrieFlushInterval() time.Duration {
 	return time.Duration(bc.flushInterval.Load())
 }
 
-// CHANGE(limechain): expose DB method
+// CHANGE(limechain):
+
 func (bc *BlockChain) DB() ethdb.Database {
 	return bc.db
+}
+
+func (bc *BlockChain) InvPreconfTxCh() chan InvalidPreconfTxEvent {
+	return bc.invPreconfTxCh
+}
+
+func (bc *BlockChain) TxSnapshotsBuilder() *TxSnapshotsBuilder {
+	return bc.txSnapshotsBuilder
 }

@@ -2,11 +2,14 @@ package eth
 
 import (
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/miner"
 )
 
@@ -74,27 +77,82 @@ func NewTaikoAuthAPIBackend(eth *Ethereum) *TaikoAuthAPIBackend {
 	return &TaikoAuthAPIBackend{eth}
 }
 
-// BuildTxList initiates the process of building tx lists.
-func (a *TaikoAuthAPIBackend) BuildTxList(
-	beneficiary common.Address,
+// CHANGE(limechain):
+
+func (a *TaikoAPIBackend) FetchL1GenesisTimestamp() uint64 {
+	timestamp := rawdb.ReadL1GenesisTimestamp(a.eth.ChainDb())
+	if timestamp == nil {
+		return 0
+	}
+	return *timestamp
+}
+
+func (a *TaikoAPIBackend) FetchAssignedSlots() []uint64 {
+	return rawdb.ReadAssignedL1Slots(a.eth.ChainDb())
+}
+
+// UpdateConfigAndSlots updates the assigned slots and configuration for
+// preaparing tx lists.
+func (a *TaikoAuthAPIBackend) UpdateConfigAndSlots(
+	l1GenesisTimestamp uint64,
+	newAssignedSlots []uint64,
 	baseFee *big.Int,
 	blockMaxGasLimit uint64,
 	maxBytesPerTxList uint64,
+	beneficiary common.Address,
 	locals []string,
 	maxTransactionsLists uint64,
 ) error {
-	err := a.eth.Miner().BuildTransactionList(
-		beneficiary,
-		baseFee,
-		blockMaxGasLimit,
-		maxBytesPerTxList,
-		locals,
-		maxTransactionsLists,
-	)
-	return err
+	db := a.eth.ChainDb()
+
+	txListConfig := &types.TxListConfig{
+		Beneficiary:          beneficiary,
+		BaseFee:              baseFee,
+		BlockMaxGasLimit:     blockMaxGasLimit,
+		MaxBytesPerTxList:    maxBytesPerTxList,
+		Locals:               locals,
+		MaxTransactionsLists: maxTransactionsLists,
+	}
+
+	rawdb.WriteL1GenesisTimestamp(db, l1GenesisTimestamp)
+	rawdb.WriteTxListConfig(db, txListConfig)
+
+	headSlot, _ := common.HeadSlotAndEpoch(l1GenesisTimestamp, time.Now().Unix())
+	currentSlot := headSlot + 1
+
+	storedSlots := rawdb.ReadAssignedL1Slots(db)
+	slotsCache := make(map[uint64]bool)
+	updatedAssignedSlots := make([]uint64, 0)
+
+	for _, slot := range storedSlots {
+		if slot < currentSlot {
+			continue
+		}
+
+		if _, ok := slotsCache[slot]; !ok {
+			updatedAssignedSlots = append(updatedAssignedSlots, slot)
+			slotsCache[slot] = true
+		}
+	}
+
+	for _, slot := range newAssignedSlots {
+		if slot < currentSlot {
+			continue
+		}
+
+		if _, ok := slotsCache[slot]; !ok {
+			updatedAssignedSlots = append(updatedAssignedSlots, slot)
+			slotsCache[slot] = true
+		}
+	}
+
+	rawdb.WriteAssignedL1Slots(db, updatedAssignedSlots)
+	log.Error("Current assigned slots", "slots", updatedAssignedSlots)
+
+	return nil
 }
 
-// FetchTxList retrieves already pre-built list of txs.
-func (a *TaikoAuthAPIBackend) FetchTxList() ([]*miner.PreBuiltTxList, error) {
-	return a.eth.Miner().FetchTransactionList()
+// FetchTxList retrieves already prepared list of txs.
+func (a *TaikoAuthAPIBackend) FetchTxList(slot uint64) ([]*miner.PreBuiltTxList, error) {
+	return a.eth.Miner().FetchTxList(slot)
 }

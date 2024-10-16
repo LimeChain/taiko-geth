@@ -96,10 +96,6 @@ var (
 	// snapSyncStatusFlagKey flags that status of snap sync.
 	snapSyncStatusFlagKey = []byte("SnapSyncStatus")
 
-	// CHANGE(limechain): tx snapshot/receipts storage keys.
-	txPoolSnapshotPrefixKey   = []byte("TxPoolSnapshot")
-	preconfTxReceiptPrefixKey = []byte("ptxr")
-
 	// Data item prefixes (use single byte to avoid mixing data types, avoid `i`, used for indexes).
 	headerPrefix       = []byte("h") // headerPrefix + num (uint64 big endian) + hash -> header
 	headerTDSuffix     = []byte("t") // headerPrefix + num (uint64 big endian) + hash + headerTDSuffix -> td
@@ -342,14 +338,4 @@ func ResolveStorageTrieNode(key []byte) (bool, common.Hash, []byte) {
 func IsStorageTrieNode(key []byte) bool {
 	ok, _, _ := ResolveStorageTrieNode(key)
 	return ok
-}
-
-// CHANGE(limechain):
-
-func txPoolSnapshotKey() []byte {
-	return txPoolSnapshotPrefixKey
-}
-
-func preconfTxReceiptKey(txHash []byte) []byte {
-	return append(preconfTxReceiptPrefixKey, txHash...)
 }

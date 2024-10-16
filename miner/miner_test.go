@@ -65,11 +65,16 @@ func (m *mockBackend) StateAtBlock(block *types.Block, reexec uint64, base *stat
 }
 
 type testBlockChain struct {
-	root          common.Hash
-	config        *params.ChainConfig
-	statedb       *state.StateDB
-	gasLimit      uint64
-	chainHeadFeed *event.Feed
+	root           common.Hash
+	config         *params.ChainConfig
+	statedb        *state.StateDB
+	gasLimit       uint64
+	chainHeadFeed  *event.Feed
+	invPreconfTxCh chan core.InvalidPreconfTxEvent
+}
+
+func (bc *testBlockChain) InvPreconfTxCh() chan core.InvalidPreconfTxEvent {
+	return bc.invPreconfTxCh
 }
 
 func (bc *testBlockChain) Config() *params.ChainConfig {
@@ -315,7 +320,7 @@ func createMiner(t *testing.T) (*Miner, *event.TypeMux, func(skipMiner bool)) {
 		t.Fatalf("can't create new chain %v", err)
 	}
 	statedb, _ := state.New(bc.Genesis().Root(), bc.StateCache(), nil)
-	blockchain := &testBlockChain{bc.Genesis().Root(), chainConfig, statedb, 10000000, new(event.Feed)}
+	blockchain := &testBlockChain{bc.Genesis().Root(), chainConfig, statedb, 10000000, new(event.Feed), make(chan core.InvalidPreconfTxEvent)}
 
 	pool := legacypool.New(testTxPoolConfig, blockchain)
 	txpool, _ := txpool.New(testTxPoolConfig.PriceLimit, blockchain, []txpool.SubPool{pool})

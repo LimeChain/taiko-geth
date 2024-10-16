@@ -292,6 +292,12 @@ func newBackendMock() *backendMock {
 	}
 }
 
+// CHANGE(limechain):
+
+func (b backendMock) TxSnapshotsBuilder() *core.TxSnapshotsBuilder {
+	return core.NewTxSnapshotsBuilder(b.ChainDb(), make(chan core.InvalidPreconfTxEvent))
+}
+
 func (b *backendMock) setFork(fork string) error {
 	if fork == "legacy" {
 		b.current.Number = big.NewInt(900)

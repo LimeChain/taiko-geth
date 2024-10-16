@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/common/slocks"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
@@ -433,6 +434,10 @@ type testBackend struct {
 	acc     accounts.Account
 }
 
+func (b *testBackend) TxSnapshotsBuilder() *core.TxSnapshotsBuilder {
+	return nil
+}
+
 func newTestBackend(t *testing.T, n int, gspec *core.Genesis, engine consensus.Engine, generator func(i int, b *core.BlockGen)) *testBackend {
 	var (
 		cacheConfig = &core.CacheConfig{
@@ -458,6 +463,10 @@ func newTestBackend(t *testing.T, n int, gspec *core.Genesis, engine consensus.E
 
 	backend := &testBackend{db: db, chain: chain, accman: accman, acc: acc}
 	return backend
+}
+
+func (b testBackend) SlotEstLock() *slocks.PerSlotLocker {
+	return &slocks.PerSlotLocker{}
 }
 
 func (b *testBackend) setPendingBlock(block *types.Block) {

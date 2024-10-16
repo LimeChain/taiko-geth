@@ -242,137 +242,8 @@ type worker struct {
 	fullTaskHook func()                             // Method to call before pushing the full sealing task.
 	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
 
-	// CHANGE(limechain): tx pool snapshot and caches
-	txPoolSnapshotMutex sync.RWMutex
-	pendingTxCache      map[common.Hash]bool
-	proposedTxCache     map[common.Hash]bool
-}
-
-// CHANGE(limechain):
-func (w *worker) loadPendingInCache(txPoolSnapshot *types.TxPoolSnapshot) {
-	if txPoolSnapshot == nil || (txPoolSnapshot == types.NewTxPoolSnapshot()) || w.pendingTxCache == nil {
-		w.pendingTxCache = make(map[common.Hash]bool)
-		return
-	}
-
-	for _, tx := range txPoolSnapshot.PendingTxs {
-		w.pendingTxCache[tx.Hash()] = true
-	}
-}
-
-// CHANGE(limechain):
-func (w *worker) loadProposedInCache(txPoolSnapshot *types.TxPoolSnapshot) {
-	if txPoolSnapshot == nil || (txPoolSnapshot == types.NewTxPoolSnapshot()) || w.proposedTxCache == nil {
-		w.proposedTxCache = make(map[common.Hash]bool)
-		return
-	}
-
-	for _, tx := range txPoolSnapshot.ProposedTxs {
-		w.proposedTxCache[tx.Hash()] = true
-	}
-}
-
-// CHANGE(limechain):
-func (w *worker) UpdatePendingTxsInPoolSnapshot(txs []*types.Transaction, b []byte, env *environment) *types.TxPoolSnapshot {
-	w.txPoolSnapshotMutex.Lock()
-	defer w.txPoolSnapshotMutex.Unlock()
-
-	db := w.eth.BlockChain().DB()
-
-	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
-	if txPoolSnapshot == nil {
-		// Initialize the tx pool snapshot
-		log.Info("Initialize tx pool snapshot")
-		txPoolSnapshot = types.NewTxPoolSnapshot()
-	}
-
-	// Short lived cache to speed up the lookup
-	w.loadPendingInCache(txPoolSnapshot)
-	for _, tx := range txs {
-		if !w.pendingTxCache[tx.Hash()] {
-			txPoolSnapshot.PendingTxs = append(txPoolSnapshot.PendingTxs, tx)
-			w.pendingTxCache[tx.Hash()] = true
-		}
-	}
-
-	// TODO(limechain): refactor, no need to return multiple lists
-	txPoolSnapshot.EstimatedGasUsed = env.header.GasLimit - env.gasPool.Gas()
-	txPoolSnapshot.BytesLength = uint64(len(b))
-
-	rawdb.WriteTxPoolSnapshot(db, txPoolSnapshot)
-
-	return txPoolSnapshot
-}
-
-// CHANGE(limechain):
-func (w *worker) ProposeTxsInPoolSnapshot() *types.TxPoolSnapshot {
-	w.txPoolSnapshotMutex.Lock()
-	defer w.txPoolSnapshotMutex.Unlock()
-
-	db := w.eth.BlockChain().DB()
-
-	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
-
-	// Short lived cache to speed up the lookup
-	w.loadProposedInCache(txPoolSnapshot)
-
-	// Do not reset the 'NewTxs' field to handle the case of 'driver' failures.
-	// Each 'propose' call will accumulate until the 'driver' finally executes
-	// and resets the state.
-	// txPoolSnapshot.NewTxs = []*types.Transaction{}
-
-	for _, tx := range txPoolSnapshot.PendingTxs {
-		if !w.proposedTxCache[tx.Hash()] {
-			txPoolSnapshot.NewTxs = append(txPoolSnapshot.NewTxs, tx)
-			txPoolSnapshot.ProposedTxs = append(txPoolSnapshot.ProposedTxs, tx)
-			w.proposedTxCache[tx.Hash()] = true
-		} else {
-			log.Info("Skip pending tx, already proposed", "hash", tx.Hash())
-		}
-	}
-
-	rawdb.WriteTxPoolSnapshot(db, txPoolSnapshot)
-
-	return txPoolSnapshot
-}
-
-// CHANGE(limechain):
-func (w *worker) ResetTxPoolSnapshot() {
-	w.txPoolSnapshotMutex.Lock()
-	defer w.txPoolSnapshotMutex.Unlock()
-
-	db := w.eth.BlockChain().DB()
-
-	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
-	if txPoolSnapshot == nil {
-		rawdb.WriteTxPoolSnapshot(db, types.NewTxPoolSnapshot())
-		return
-	}
-
-	newPendingTxs := []*types.Transaction{}
-
-	// Short lived cache to speed up the lookup
-	w.loadProposedInCache(txPoolSnapshot)
-	for _, tx := range txPoolSnapshot.PendingTxs {
-		if !w.proposedTxCache[tx.Hash()] {
-			newPendingTxs = append(newPendingTxs, tx)
-		}
-	}
-
-	// TODO(limechain):
-	// Handle the case where the 'driver' has failed and the 'proposer'
-	// has continued working, new pending transactions were added after
-	// that some txs have been proposed, and the 'driver' has been restarted.
-	if len(newPendingTxs) > 0 {
-		log.Error("There are new pending txs not in proposed", "txs", newPendingTxs)
-	}
-
-	// reset the snapshot and the caches
-	rawdb.WriteTxPoolSnapshot(db, types.NewTxPoolSnapshot())
-	w.pendingTxCache = make(map[common.Hash]bool)
-	w.proposedTxCache = make(map[common.Hash]bool)
-
-	log.Warn("Tx pool snapshot has been reset")
+	// CHANGE(limechain):
+	txSnapshotsBuilder *core.TxSnapshotsBuilder
 }
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
@@ -404,6 +275,11 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	// Subscribe events for blockchain
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
 
+	// CHANGE(limechain):
+	db := worker.eth.BlockChain().DB()
+	invPreconfTxEventCh := worker.eth.BlockChain().InvPreconfTxCh()
+	worker.txSnapshotsBuilder = core.NewTxSnapshotsBuilder(db, invPreconfTxEventCh)
+
 	// Sanitize recommit interval if the user-specified one is too short.
 	recommit := worker.config.Recommit
 	if recommit < minRecommitInterval {
@@ -423,17 +299,120 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	}
 	worker.newpayloadTimeout = newpayloadTimeout
 
-	worker.wg.Add(4)
+	worker.wg.Add(5)
 	go worker.mainLoop()
 	go worker.newWorkLoop(recommit)
 	go worker.resultLoop()
 	go worker.taskLoop()
+	go worker.txSnapshotsLoop()
 
 	// Submit first work to initialize pending state.
 	if init {
 		worker.startCh <- struct{}{}
 	}
 	return worker
+}
+
+// CHANGE(limechain):
+// txSnapshotsLoop polls new txs from the txpool and updates
+// the corresponding snapshots.
+func (w *worker) txSnapshotsLoop() {
+	defer w.wg.Done()
+
+	for {
+		select {
+		case <-w.exitCh:
+			return
+		default:
+			db := w.eth.BlockChain().DB()
+
+			// There are time restrictions for submitting/proposing preconf txs,
+			// which occur within seconds. Therefore, it is essential to update
+			// snapshots in a timely manner.
+			waitDuration := 500 * time.Millisecond
+
+			// Fetch tx list configuration to use for tx snapshot updates.
+			txListConfig := rawdb.ReadTxListConfig(db)
+			if txListConfig == nil {
+				log.Error("Failed to fetch tx list config")
+				time.Sleep(waitDuration)
+				continue
+			}
+
+			// Fetch L1 genesis timestamp to calculate the current slot.
+			l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(db)
+			if l1GenesisTimestamp == nil {
+				log.Error("Failed to fetch L1 genesis timestamp")
+				time.Sleep(waitDuration)
+				continue
+			}
+
+			// Keeps track of the l2 block to l1 slot offset.
+			headSlot, _ := common.HeadSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
+			latestL2Block := w.eth.BlockChain().CurrentBlock()
+			blockSlotOffset := headSlot - latestL2Block.Number.Uint64()
+			rawdb.WriteL2BlockToL1SlotOffset(db, blockSlotOffset)
+
+			log.Info(
+				"Update tx slot snapshots",
+				"current slot index", common.SlotIndex(headSlot+1),
+				"current slot", headSlot+1,
+				"head slot", headSlot,
+				"latest block", latestL2Block.Number,
+				"l2 block to l1 slot offset", blockSlotOffset,
+				"beneficiary", txListConfig.Beneficiary,
+				"base fee", txListConfig.BaseFee,
+				"block max gas limit", txListConfig.BlockMaxGasLimit,
+				"max bytes per tx list", txListConfig.MaxBytesPerTxList,
+			)
+
+			pendingPoolTxs := w.eth.TxPool().Pending(txpool.PendingFilter{BaseFee: uint256.MustFromBig(txListConfig.BaseFee), OnlyPlainTxs: true})
+			if len(pendingPoolTxs) == 0 {
+				w.txSnapshotsBuilder.ResetAllTxSnapshots()
+				time.Sleep(waitDuration)
+				continue
+			}
+			log.Info("Tx pool content", "txs count", len(pendingPoolTxs))
+
+			// Loop through each slot and update each snapshot. We need to start from the first
+			// up to the last slot since we need to be able to simulate preconf txs and store receipts.
+			for i := uint64(0); i < uint64(common.EpochLength); i++ {
+				// Initialize the slot snapshot if it does not exist.
+				w.txSnapshotsBuilder.EnsureTxSlotSnapshot(i)
+
+				err := w.UpdateTxSlotSnapshot(
+					i,
+					txListConfig.Beneficiary,
+					txListConfig.BaseFee,
+					txListConfig.BlockMaxGasLimit,
+					txListConfig.MaxBytesPerTxList,
+					txListConfig.Locals,
+					txListConfig.MaxTransactionsLists,
+				)
+				if err != nil {
+					log.Error("Tx slot snapshot update failed", "slot index", i, "error", err)
+					continue
+				}
+			}
+
+			// Update the tx pool snapshot with non-preconf txs.
+			err := w.UpdateTxPoolSnapshot(
+				txListConfig.Beneficiary,
+				txListConfig.BaseFee,
+				txListConfig.BlockMaxGasLimit,
+				txListConfig.MaxBytesPerTxList,
+				txListConfig.Locals,
+				txListConfig.MaxTransactionsLists,
+			)
+			if err != nil {
+				log.Error("Tx pool snapshot update failed", "error", err)
+				time.Sleep(waitDuration)
+				continue
+			}
+
+			time.Sleep(waitDuration)
+		}
+	}
 }
 
 // setEtherbase sets the etherbase used to initialize the block coinbase field.
@@ -900,7 +879,6 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 	// CHANGE(limechain):
 	// Store preconf receipt under the tx hash for later retrieval
 	// without having canonical block data available.
-	db := w.eth.BlockChain().DB()
 	if tx.Type() == types.InclusionPreconfirmationTxType {
 		signer := types.MakeSigner(w.chainConfig, receipt.BlockNumber, env.header.Time)
 		from, _ := types.Sender(signer, tx)
@@ -908,8 +886,20 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 		if head := w.chain.CurrentHeader(); head != nil && head.BaseFee != nil {
 			receipt.EffectiveGasPrice = tx.EffectiveGasTipValue(head.BaseFee)
 		}
-		rawdb.WritePreconfReceipt(db, receipt, &from, to)
-		log.Info("Store inclusion preconfirmation tx receipt", "index", receipt.TransactionIndex, "hash", tx.Hash().String(), "from", from.String(), "to", to.String())
+		db := w.eth.BlockChain().DB()
+
+		// There might be a scenario where we would need to overwrite the preconf receipt
+		storedPreconfReceipt := rawdb.ReadPreconfReceipt(db, tx.Hash())
+		if storedPreconfReceipt == nil {
+			blockSlotOffset := rawdb.ReadL2BlockToL1SlotOffset(db)
+			if blockSlotOffset == nil {
+				log.Error("Failed to fetch block slot offset")
+			} else {
+				receipt.BlockNumber = big.NewInt(int64(tx.Deadline().Uint64() - *blockSlotOffset))
+			}
+			rawdb.WritePreconfReceipt(db, receipt, &from, to)
+		}
+		// log.Info("Store inclusion preconfirmation tx receipt", "index", receipt.TransactionIndex, "hash", tx.Hash().String(), "from", from.String(), "to", to.String())
 	}
 
 	return receipt.Logs, nil

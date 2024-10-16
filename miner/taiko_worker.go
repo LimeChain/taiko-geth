@@ -23,117 +23,6 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// BuildTransactionList builds multiple transactions lists which satisfy all the given conditions
-// 1. All transactions should all be able to pay the given base fee.
-// 2. The total gas used should not exceed the given blockMaxGasLimit
-// 3. The total bytes used should not exceed the given maxBytesPerTxList
-// 4. The total number of transactions lists should not exceed the given maxTransactionsLists
-func (w *worker) BuildTransactionList(
-	beneficiary common.Address,
-	baseFee *big.Int,
-	blockMaxGasLimit uint64,
-	maxBytesPerTxList uint64,
-	localAccounts []string,
-	maxTransactionsLists uint64,
-) error {
-	log.Info("Start building tx list", "baseFee", baseFee, "blockMaxGasLimit", blockMaxGasLimit, "maxBytesPerTxList", maxBytesPerTxList, "localAccounts", localAccounts, "maxTransactionsLists", maxTransactionsLists)
-
-	currentHead := w.chain.CurrentBlock()
-	if currentHead == nil {
-		return fmt.Errorf("failed to find current head")
-	}
-
-	// Check if tx pool is empty at first.
-	if len(w.eth.TxPool().Pending(txpool.PendingFilter{BaseFee: uint256.MustFromBig(baseFee), OnlyPlainTxs: true})) == 0 {
-		// CHANGE(limechain): tx pool has been reset, reset the tx pool snapshot.
-		w.ResetTxPoolSnapshot()
-		return nil
-	}
-
-	params := &generateParams{
-		timestamp:     uint64(time.Now().Unix()),
-		forceTime:     true,
-		parentHash:    currentHead.Hash(),
-		coinbase:      beneficiary,
-		random:        currentHead.MixDigest,
-		noTxs:         false,
-		baseFeePerGas: baseFee,
-	}
-
-	env, err := w.prepareWork(params)
-	if err != nil {
-		return err
-	}
-	defer env.discard()
-
-	var (
-		signer = types.MakeSigner(w.chainConfig, new(big.Int).Add(currentHead.Number, common.Big1), currentHead.Time)
-		// Split the pending transactions into locals and remotes, then
-		// fill the block with all available pending transactions.
-		localTxs, remoteTxs = w.getPendingTxs(localAccounts, baseFee)
-	)
-
-	commitTxs := func() (*types.TxPoolSnapshot, error) {
-		env.tcount = 0
-		env.txs = []*types.Transaction{}
-		env.gasPool = new(core.GasPool).AddGas(blockMaxGasLimit)
-		env.header.GasLimit = blockMaxGasLimit
-
-		var (
-			locals  = make(map[common.Address][]*txpool.LazyTransaction)
-			remotes = make(map[common.Address][]*txpool.LazyTransaction)
-		)
-
-		for address, txs := range localTxs {
-			locals[address] = txs
-		}
-		for address, txs := range remoteTxs {
-			remotes[address] = txs
-		}
-
-		w.commitL2Transactions(
-			env,
-			newTransactionsByTypePriceAndNonce(signer, locals, baseFee),
-			newTransactionsByTypePriceAndNonce(signer, remotes, baseFee),
-			maxBytesPerTxList,
-		)
-
-		b, err := encodeAndComporeessTxList(env.txs)
-		if err != nil {
-			return nil, err
-		}
-
-		// CHANGE(limechain): keep the tx pool snapshot up to date.
-		txPoolSnapshot := w.UpdatePendingTxsInPoolSnapshot(env.txs, b, env)
-		return txPoolSnapshot, nil
-	}
-
-	for i := 0; i < int(maxTransactionsLists); i++ {
-		res, err := commitTxs()
-		if err != nil {
-			return err
-		}
-
-		if len(res.PendingTxs) == 0 {
-			break
-		}
-	}
-
-	// TODO(limechain): During transaction execution, if sufficient block space is
-	// available in the current slot, pull and process transactions with later deadlines
-	// in the current slot, and update the per-slot constraints.
-
-	// TODO(limechain): remove, just for debugging purposes
-	db := w.eth.BlockChain().DB()
-	txPoolSnapshot := rawdb.ReadTxPoolSnapshot(db)
-	if txPoolSnapshot != nil {
-		log.Warn("Tx list pending", "count", len(txPoolSnapshot.PendingTxs), "txs", txPoolSnapshot.PendingTxs)
-		log.Warn("Tx list proposed", "count", len(txPoolSnapshot.ProposedTxs), "txs", txPoolSnapshot.ProposedTxs)
-		log.Warn("Tx list new", "count", len(txPoolSnapshot.NewTxs), "txs", txPoolSnapshot.NewTxs)
-	}
-	return nil
-}
-
 // sealBlockWith mines and seals a block with the given block metadata.
 func (w *worker) sealBlockWith(
 	parent common.Hash,
@@ -183,6 +72,7 @@ func (w *worker) sealBlockWith(
 	env.gasPool = new(core.GasPool).AddGas(gasLimit)
 
 	for i, tx := range txs {
+		// log.Warn("Seal tx", "index", i, "hash", tx.Hash().String())
 		if i == 0 {
 			if err := tx.MarkAsAnchor(); err != nil {
 				return nil, err
@@ -190,14 +80,14 @@ func (w *worker) sealBlockWith(
 		}
 		sender, err := types.LatestSignerForChainID(w.chainConfig.ChainID).Sender(tx)
 		if err != nil {
-			log.Info("Skip an invalid proposed transaction", "hash", tx.Hash(), "reason", err)
+			log.Error("Skip an invalid proposed transaction", "hash", tx.Hash(), "reason", err)
 			continue
 		}
 
 		env.state.Prepare(rules, sender, blkMeta.Beneficiary, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
 		env.state.SetTxContext(tx.Hash(), env.tcount)
 		if _, err := w.commitTransaction(env, tx); err != nil {
-			log.Info("Skip an invalid proposed transaction", "hash", tx.Hash(), "reason", err)
+			log.Error("Skip an invalid proposed transaction", "hash", tx.Hash(), "reason", err)
 			continue
 		}
 		env.tcount++
@@ -207,6 +97,7 @@ func (w *worker) sealBlockWith(
 	if err != nil {
 		return nil, err
 	}
+	log.Warn("Seal block", "number", block.Number())
 
 	results := make(chan *types.Block, 1)
 	if err := w.engine.Seal(w.chain, block, results, nil); err != nil {
@@ -217,13 +108,323 @@ func (w *worker) sealBlockWith(
 	return block, nil
 }
 
-// getPendingTxs fetches the pending transactions from tx pool.
-func (w *worker) getPendingTxs(localAccounts []string, baseFee *big.Int) (
+// CHANGE(limechain):
+
+// 1. All transactions should all be able to pay the given base fee.
+// 2. The total gas used should not exceed the given blockMaxGasLimit
+// 3. The total bytes used should not exceed the given maxBytesPerTxList
+// 4. The total number of transactions lists should not exceed the given maxTransactionsLists
+
+// TODO(limechain): DRY UpdateTxSlotSnapshot and UpdateTxPoolSnapshot
+
+func (w *worker) UpdateTxSlotSnapshot(
+	snapshotSlot uint64,
+	beneficiary common.Address,
+	baseFee *big.Int,
+	blockMaxGasLimit uint64,
+	maxBytesPerTxList uint64,
+	localAccounts []string,
+	maxTransactionsLists uint64,
+) error {
+	currentHead := w.chain.CurrentBlock()
+	if currentHead == nil {
+		return fmt.Errorf("failed to find current head")
+	}
+
+	// Check if tx pool is empty at first.
+	if len(w.getPendingTxs(baseFee)) == 0 {
+		return nil
+	}
+
+	params := &generateParams{
+		timestamp:     uint64(time.Now().Unix()),
+		forceTime:     true,
+		parentHash:    currentHead.Hash(),
+		coinbase:      beneficiary,
+		random:        currentHead.MixDigest,
+		noTxs:         false,
+		baseFeePerGas: baseFee,
+	}
+
+	env, err := w.prepareWork(params)
+	if err != nil {
+		return err
+	}
+	defer env.discard()
+
+	var (
+		signer = types.MakeSigner(w.chainConfig, new(big.Int).Add(currentHead.Number, common.Big1), currentHead.Time)
+
+		// Fetch all preconf txs up to the current slot for simulation.
+
+		// Split the pending transactions into locals and remotes, then
+		// fill the block with all available pending transactions.
+		localPreconfTxs, remotePreconfTxs = w.getPendingPreconfTxs(localAccounts, baseFee, snapshotSlot)
+	)
+
+	commitTxs := func() (*types.TxSlotSnapshot, error) {
+		env.tcount = 0
+		env.txs = []*types.Transaction{}
+		env.gasPool = new(core.GasPool).AddGas(blockMaxGasLimit)
+		env.header.GasLimit = blockMaxGasLimit
+
+		var (
+			localsPreconf  = make(map[common.Address][]*txpool.LazyTransaction)
+			remotesPreconf = make(map[common.Address][]*txpool.LazyTransaction)
+		)
+
+		for address, txs := range localPreconfTxs {
+			localsPreconf[address] = txs
+		}
+		for address, txs := range remotePreconfTxs {
+			remotesPreconf[address] = txs
+		}
+
+		w.commitL2Transactions(
+			env,
+			newTransactionsByTypePriceAndNonce(signer, localsPreconf, baseFee),
+			newTransactionsByTypePriceAndNonce(signer, remotesPreconf, baseFee),
+			maxBytesPerTxList,
+		)
+
+		b, err := encodeAndComporeessTxList(env.txs)
+		if err != nil {
+			log.Error("Failed to encode and compress tx list", "err", err)
+			return nil, err
+		}
+
+		totalBytes := uint64(len(b))
+		totalGas := env.header.GasLimit - env.gasPool.Gas()
+
+		// Calculate gas and bytes usage based on the difference
+		// between current and previous slot snapshots.
+		var (
+			prevTotalGas, prevTotalBytes uint64
+		)
+		for i := uint64(0); i < snapshotSlot; i++ {
+			txSlotSnapshot := w.txSnapshotsBuilder.GetTxSlotSnapshot(i)
+			prevTotalGas += txSlotSnapshot.GasUsed
+			prevTotalBytes += txSlotSnapshot.BytesLength
+		}
+
+		currentSlotGas := totalGas - prevTotalGas
+		currentSlotBytes := totalBytes - prevTotalBytes
+
+		if totalGas < prevTotalGas {
+			currentSlotGas = 0
+		}
+		if totalBytes < prevTotalBytes {
+			currentSlotBytes = 0
+		}
+
+		// all txs for specific slot have been executed, reset tx slot snapshot
+		if currentSlotGas == 0 {
+			w.txSnapshotsBuilder.ResetTxSlotSnapshot(snapshotSlot)
+		}
+
+		// Update the slot snapshot with only txs for the current slot.
+		txSlotSnapshot := w.txSnapshotsBuilder.UpdateTxSlotSnapshot(snapshotSlot, env.txs, currentSlotBytes, currentSlotGas)
+
+		// TODO(limechain): remove this log
+		if txSlotSnapshot != nil && len(txSlotSnapshot.Txs) > 0 {
+			log.Warn("Txs from slot snapshot", "slot index", snapshotSlot, "tx count", len(txSlotSnapshot.Txs), "txs", txSlotSnapshot.Txs, "gas used", txSlotSnapshot.GasUsed, "bytes length", txSlotSnapshot.BytesLength)
+		}
+
+		return txSlotSnapshot, nil
+	}
+
+	for i := 0; i < int(maxTransactionsLists); i++ {
+		txSlotSnapshot, err := commitTxs()
+		if err != nil {
+			log.Error("Failed to commit transactions", "err", err)
+			return err
+		}
+		if txSlotSnapshot != nil && len(txSlotSnapshot.Txs) == 0 {
+			break
+		}
+	}
+
+	return nil
+}
+
+func (w *worker) UpdateTxPoolSnapshot(
+	beneficiary common.Address,
+	baseFee *big.Int,
+	blockMaxGasLimit uint64,
+	maxBytesPerTxList uint64,
+	localAccounts []string,
+	maxTransactionsLists uint64,
+) error {
+	currentHead := w.chain.CurrentBlock()
+	if currentHead == nil {
+		return fmt.Errorf("failed to find current head")
+	}
+
+	// Check if tx pool is empty at first.
+	if len(w.getPendingTxs(baseFee)) == 0 {
+		return nil
+	}
+
+	params := &generateParams{
+		timestamp:     uint64(time.Now().Unix()),
+		forceTime:     true,
+		parentHash:    currentHead.Hash(),
+		coinbase:      beneficiary,
+		random:        currentHead.MixDigest,
+		noTxs:         false,
+		baseFeePerGas: baseFee,
+	}
+
+	env, err := w.prepareWork(params)
+	if err != nil {
+		return err
+	}
+	defer env.discard()
+
+	var (
+		signer = types.MakeSigner(w.chainConfig, new(big.Int).Add(currentHead.Number, common.Big1), currentHead.Time)
+		// Split the pending transactions into locals and remotes, then
+		// fill the block with all available pending transactions.
+		localNonPreconfTxs, remoteNonPreconfTxs = w.getPendingNonPreconfTxs(localAccounts, baseFee)
+	)
+
+	commitTxs := func() (*types.TxPoolSnapshot, error) {
+		env.tcount = 0
+		env.txs = []*types.Transaction{}
+		env.gasPool = new(core.GasPool).AddGas(blockMaxGasLimit)
+		env.header.GasLimit = blockMaxGasLimit
+
+		var (
+			localsPreconf  = make(map[common.Address][]*txpool.LazyTransaction)
+			remotesPreconf = make(map[common.Address][]*txpool.LazyTransaction)
+		)
+
+		for address, txs := range localNonPreconfTxs {
+			localsPreconf[address] = txs
+		}
+		for address, txs := range remoteNonPreconfTxs {
+			remotesPreconf[address] = txs
+		}
+
+		w.commitL2Transactions(
+			env,
+			newTransactionsByTypePriceAndNonce(signer, localsPreconf, baseFee),
+			newTransactionsByTypePriceAndNonce(signer, remotesPreconf, baseFee),
+			maxBytesPerTxList,
+		)
+
+		b, err := encodeAndComporeessTxList(env.txs)
+		if err != nil {
+			log.Error("Failed to encode and compress tx list", "err", err)
+			return nil, err
+		}
+
+		gasUsed := env.header.GasLimit - env.gasPool.Gas()
+
+		txPoolSnapshot := w.txSnapshotsBuilder.UpdateTxPoolSnapshot(env.txs, uint64(len(b)), gasUsed)
+
+		// TODO(limechain): remove this log
+		if txPoolSnapshot != nil && (len(txPoolSnapshot.PendingTxs) != 0 || len(txPoolSnapshot.ProposedTxs) != 0 || len(txPoolSnapshot.NewTxs) != 0) {
+			log.Warn("Txs from pool snapshot", "pending tx count", len(txPoolSnapshot.PendingTxs), "txs", txPoolSnapshot.PendingTxs)
+			log.Warn("Txs from pool snapshot", "proposed tx count", len(txPoolSnapshot.ProposedTxs), "txs", txPoolSnapshot.ProposedTxs)
+			log.Warn("Txs from pool snapshot", "new tx count", len(txPoolSnapshot.NewTxs), "txs", txPoolSnapshot.NewTxs)
+			log.Warn("Txs from pool snapshot", "gas used", txPoolSnapshot.GasUsed, "bytes length", txPoolSnapshot.BytesLength)
+		}
+
+		return txPoolSnapshot, nil
+	}
+
+	for i := 0; i < int(maxTransactionsLists); i++ {
+		txPoolSnapshot, err := commitTxs()
+		if err != nil {
+			log.Error("Failed to commit transactions", "err", err)
+			return err
+		}
+
+		if txPoolSnapshot != nil && len(txPoolSnapshot.NewTxs) == 0 {
+			break
+		}
+	}
+
+	return nil
+}
+
+func (w *worker) getPendingPreconfTxs(localAccounts []string, baseFee *big.Int, slotIndex uint64) (
 	map[common.Address][]*txpool.LazyTransaction,
 	map[common.Address][]*txpool.LazyTransaction,
 ) {
-	pending := w.eth.TxPool().Pending(txpool.PendingFilter{OnlyPlainTxs: true, BaseFee: uint256.MustFromBig(baseFee)})
-	localTxs, remoteTxs := make(map[common.Address][]*txpool.LazyTransaction), pending
+	pending := w.getPendingTxs(baseFee)
+
+	preconfTxs := make(map[common.Address][]*txpool.LazyTransaction)
+
+	// TODO(limechain): pass it from outside
+	l1GenesisTimestamp := rawdb.ReadL1GenesisTimestamp(w.eth.BlockChain().DB())
+	if l1GenesisTimestamp == nil {
+		log.Error("L1 genesis timestamp is unknown")
+	}
+
+	for addr, txs := range pending {
+		headSlot, headEpoch := common.HeadSlotAndEpoch(*l1GenesisTimestamp, time.Now().Unix())
+		currentSlot := headSlot + 1
+
+		for _, tx := range txs {
+			txDeadlineSlot := tx.Tx.Deadline().Uint64()
+			txDeadlineEpoch := txDeadlineSlot / uint64(common.EpochLength)
+			// When it is the first slot (index 0) from the current epoch
+			if common.SlotIndex(txDeadlineSlot) == 0 && txDeadlineSlot == currentSlot {
+				txDeadlineEpoch -= 1
+			}
+
+			// Get preconf txs up to the current slot for per-slot simulation and gas estimation.
+			if tx.Tx.Type() == types.InclusionPreconfirmationTxType && common.SlotIndex(txDeadlineSlot) <= slotIndex {
+				// Future epoch and slot
+				if txDeadlineEpoch > headEpoch {
+					// Do not pick this tx until the next epoch since we maintain only 32 slot snapshot for the current epoch
+				} else {
+					preconfTxs[addr] = append(preconfTxs[addr], tx)
+				}
+			}
+		}
+	}
+
+	localPreconfTxs, remotePreconfTxs := make(map[common.Address][]*txpool.LazyTransaction), preconfTxs
+
+	for _, local := range localAccounts {
+		account := common.HexToAddress(local)
+		if txs := remotePreconfTxs[account]; len(txs) > 0 {
+			delete(remotePreconfTxs, account)
+			localPreconfTxs[account] = txs
+		}
+	}
+
+	return localPreconfTxs, remotePreconfTxs
+}
+
+func (w *worker) getPendingNonPreconfTxs(localAccounts []string, baseFee *big.Int) (
+	map[common.Address][]*txpool.LazyTransaction,
+	map[common.Address][]*txpool.LazyTransaction,
+) {
+	pending := w.getPendingTxs(baseFee)
+
+	nonPreconfTxs := make(map[common.Address][]*txpool.LazyTransaction)
+
+	for addr, txs := range pending {
+		hasPreconfTxs := false
+
+		for _, tx := range txs {
+			if tx.Tx.Type() == types.InclusionPreconfirmationTxType {
+				hasPreconfTxs = true
+			} else {
+				// if address has preconf txs before the non-preconf tx, then
+				// delay the non-preconf txs until preconfs are processed.
+				if !hasPreconfTxs {
+					nonPreconfTxs[addr] = append(nonPreconfTxs[addr], tx)
+				}
+			}
+		}
+	}
+
+	localTxs, remoteTxs := make(map[common.Address][]*txpool.LazyTransaction), nonPreconfTxs
 
 	for _, local := range localAccounts {
 		account := common.HexToAddress(local)
@@ -234,6 +435,13 @@ func (w *worker) getPendingTxs(localAccounts []string, baseFee *big.Int) (
 	}
 
 	return localTxs, remoteTxs
+}
+
+func (w *worker) getPendingTxs(baseFee *big.Int) map[common.Address][]*txpool.LazyTransaction {
+	return w.eth.TxPool().Pending(txpool.PendingFilter{
+		BaseFee:      uint256.MustFromBig(baseFee),
+		OnlyPlainTxs: true},
+	)
 }
 
 // commitL2Transactions tries to commit the transactions into the given state.
@@ -301,7 +509,7 @@ func (w *worker) commitL2Transactions(
 		// Start executing the transaction
 		env.state.SetTxContext(tx.Hash(), env.tcount)
 
-		log.Warn("Processing tx", "from", from, "type", tx.Type(), "hash", tx.Hash(), "nonce", tx.Nonce(), "gasPrice", tx.GasPrice(), "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap(), "gas", tx.Gas())
+		// log.Warn("Processing tx", "from", from, "type", tx.Type(), "hash", tx.Hash(), "nonce", tx.Nonce(), "gasPrice", tx.GasPrice(), "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap(), "gas", tx.Gas())
 		_, err := w.commitTransaction(env, tx)
 		switch {
 		case errors.Is(err, core.ErrNonceTooLow):
@@ -333,6 +541,7 @@ func (w *worker) commitL2Transactions(
 			break
 		}
 	}
+	// log.Info("Committed transactions", "count", env.tcount)
 }
 
 // encodeAndComporeessTxList encodes and compresses the given transactions list.

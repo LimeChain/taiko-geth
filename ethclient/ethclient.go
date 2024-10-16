@@ -624,6 +624,16 @@ func (ec *Client) SendTransaction(ctx context.Context, tx *types.Transaction) er
 	return ec.c.CallContext(ctx, nil, "eth_sendRawTransaction", hexutil.Encode(data))
 }
 
+func (ec *Client) SendTransactionWithResult(ctx context.Context, tx *types.Transaction) (common.Hash, error) {
+	data, err := tx.MarshalBinary()
+	if err != nil {
+		return common.Hash{}, err
+	}
+	var result common.Hash
+	err = ec.c.CallContext(ctx, &result, "eth_sendRawTransaction", hexutil.Encode(data))
+	return result, err
+}
+
 func toBlockNumArg(number *big.Int) string {
 	if number == nil {
 		return "latest"

@@ -1,11 +1,14 @@
 package miner
 
 import (
+	"errors"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // PreBuiltTxList is a pre-built transaction list based on the latest chain state,
@@ -27,33 +30,66 @@ func (miner *Miner) SealBlockWith(
 	return miner.worker.sealBlockWith(parent, timestamp, blkMeta, baseFeePerGas, withdrawals)
 }
 
-// BuildTransactionList initiates the process of building tx lists that later can be fetched.
-func (miner *Miner) BuildTransactionList(
-	beneficiary common.Address,
-	baseFee *big.Int,
-	blockMaxGasLimit uint64,
-	maxBytesPerTxList uint64,
-	locals []string,
-	maxTransactionsLists uint64,
-) error {
-	return miner.worker.BuildTransactionList(
-		beneficiary,
-		baseFee,
-		blockMaxGasLimit,
-		maxBytesPerTxList,
-		locals,
-		maxTransactionsLists,
-	)
-}
+// CHANGE(limechain):
 
-// FetchTransactionList retrieves already pre-built list of txs.
-func (miner *Miner) FetchTransactionList() ([]*PreBuiltTxList, error) {
-	txPoolSnapshot := miner.worker.ProposeTxsInPoolSnapshot()
-	// TODO(limechain): refactor, no need to return multiple lists
-	txList := &PreBuiltTxList{
-		TxList:           txPoolSnapshot.NewTxs,
-		EstimatedGasUsed: txPoolSnapshot.EstimatedGasUsed,
-		BytesLength:      txPoolSnapshot.BytesLength,
+// FetchTxList retrieves already pre-built list of preconf txs for specific slot and
+// non-preconf txs currently in the txpool.
+func (miner *Miner) FetchTxList(slot uint64) ([]*PreBuiltTxList, error) {
+	var (
+		txs          types.Transactions
+		totalGasUsed uint64
+		totalBytes   uint64
+	)
+
+	db := miner.worker.chain.DB()
+
+	txListConfig := rawdb.ReadTxListConfig(db)
+	if txListConfig == nil {
+		return nil, errors.New("failed to fetch tx list config")
 	}
+
+	slotIndex := common.SlotIndex(slot)
+	txSlotSnapshot := miner.worker.txSnapshotsBuilder.GetTxSlotSnapshot(slotIndex)
+
+	// Fetch preconf txs from slot snapshot
+	if txSlotSnapshot.GasUsed < txListConfig.BlockMaxGasLimit &&
+		txSlotSnapshot.BytesLength < txListConfig.MaxBytesPerTxList {
+
+		txs = append(txs, txSlotSnapshot.Txs...)
+		totalGasUsed += txSlotSnapshot.GasUsed
+		totalBytes += txSlotSnapshot.BytesLength
+	} else {
+		log.Error("Tx list limits reached", "slot index", common.SlotIndex(slot), "txs", txs, "gas used", totalGasUsed, "bytes length", totalBytes)
+		return nil, nil
+	}
+
+	// Fetch non-preconf txs from txpool snapshot
+	miner.worker.txSnapshotsBuilder.ProposeFromTxPoolSnapshot()
+	txPoolSnapshot := miner.worker.txSnapshotsBuilder.GetTxPoolSnapshot()
+	if totalGasUsed+txPoolSnapshot.GasUsed < txListConfig.BlockMaxGasLimit &&
+		totalBytes+txPoolSnapshot.BytesLength < txListConfig.MaxBytesPerTxList {
+
+		totalGasUsed += txPoolSnapshot.GasUsed
+		totalBytes += txPoolSnapshot.BytesLength
+		txs = append(txs, txPoolSnapshot.NewTxs...)
+	} else {
+		miner.worker.txSnapshotsBuilder.RevertProposedTxPoolSnapshot()
+		log.Error("Tx list limits reached", "slot index", common.SlotIndex(slot), "txs", txs, "gas used", totalGasUsed, "bytes length", totalBytes)
+	}
+
+	// TODO(limechain): support multiple tx lists
+	txList := &PreBuiltTxList{
+		TxList:           txs,
+		EstimatedGasUsed: totalGasUsed,
+		BytesLength:      totalBytes,
+	}
+
+	log.Error("Fetch tx list to propose",
+		"slot index", common.SlotIndex(slot),
+		"slot", slot,
+		"txs", txs,
+		"gas used", totalGasUsed,
+		"bytes length", totalBytes,
+	)
 	return []*PreBuiltTxList{txList}, nil
 }

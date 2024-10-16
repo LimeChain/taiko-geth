@@ -436,3 +436,9 @@ func (b *EthAPIBackend) StateAtBlock(ctx context.Context, block *types.Block, re
 func (b *EthAPIBackend) StateAtTransaction(ctx context.Context, block *types.Block, txIndex int, reexec uint64) (*core.Message, vm.BlockContext, *state.StateDB, tracers.StateReleaseFunc, error) {
 	return b.eth.stateAtTransaction(ctx, block, txIndex, reexec)
 }
+
+// CHANGE(limechain):
+
+func (b *EthAPIBackend) TxSnapshotsBuilder() *core.TxSnapshotsBuilder {
+	return b.eth.BlockChain().TxSnapshotsBuilder()
+}

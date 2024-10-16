@@ -27,7 +27,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -180,7 +179,7 @@ func TransactionToMessage(tx *types.Transaction, s types.Signer, baseFee *big.In
 		if msg.IsPreconf {
 			// Increase the base by premium percentage, that will go into the treasury.
 			baseFee = common.IncreaseByPercentage(params.InclusionPreconfirmationFeePremium, baseFee)
-			log.Info("Adjusted base fee for preconfirmation tx", "base fee", baseFee)
+			// log.Info("Adjusted base fee for preconfirmation tx", "base fee", baseFee)
 		}
 
 		msg.GasPrice = cmath.BigMin(msg.GasPrice.Add(msg.GasTipCap, baseFee), msg.GasFeeCap)
@@ -474,7 +473,7 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		if st.msg.IsPreconf && baseFee != nil {
 			// Increase the base by premium percentage, that will go into the treasury.
 			baseFee = common.IncreaseByPercentage(params.InclusionPreconfirmationFeePremium, baseFee)
-			log.Info("Adjusted base fee for preconfirmation tx", "base fee", baseFee)
+			// log.Info("Adjusted base fee for preconfirmation tx", "base fee", baseFee)
 		}
 		effectiveTip = cmath.BigMin(msg.GasTipCap, new(big.Int).Sub(msg.GasFeeCap, baseFee))
 	}

@@ -117,6 +117,9 @@ type BlockChain interface {
 
 	// StateAt returns a state database for a given root hash (generally the head).
 	StateAt(root common.Hash) (*state.StateDB, error)
+
+	// CHANGE(limechain):
+	InvPreconfTxCh() chan core.InvalidPreconfTxEvent
 }
 
 // Config are the configuration parameters of the transaction pool.
@@ -231,6 +234,10 @@ type LegacyPool struct {
 	initDoneCh      chan struct{}  // is closed once the pool is initialized (for tests)
 
 	changesSinceReorg int // A counter for how many drops we've performed in-between reorg.
+
+	// CHANGE(limechain):
+	preconfTxFeed       event.Feed
+	invPreconfTxEventCh chan core.InvalidPreconfTxEvent
 }
 
 type txpoolResetRequest struct {
@@ -259,6 +266,8 @@ func New(config Config, chain BlockChain) *LegacyPool {
 		reorgDoneCh:     make(chan chan struct{}),
 		reorgShutdownCh: make(chan struct{}),
 		initDoneCh:      make(chan struct{}),
+		// CHANGE(limechain):
+		invPreconfTxEventCh: chain.InvPreconfTxCh(),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -324,9 +333,30 @@ func (pool *LegacyPool) Init(gasTip uint64, head *types.Header, reserve txpool.A
 			log.Warn("Failed to rotate transaction journal", "err", err)
 		}
 	}
-	pool.wg.Add(1)
+	// CHANGE(limechain):
+	pool.preconfTxFeed.Subscribe(pool.invPreconfTxEventCh)
+	pool.wg.Add(2)
+	go pool.eventLoop()
 	go pool.loop()
 	return nil
+}
+
+// CHANGE(limechain):
+func (pool *LegacyPool) eventLoop() {
+	defer pool.wg.Done()
+
+	for {
+		select {
+		case <-pool.reorgShutdownCh:
+			return
+		case event := <-pool.invPreconfTxEventCh:
+			// TODO(limechain): remove it from the corresponding snapshot
+			pool.mu.Lock()
+			pool.removeTx(event.TxHash, true, true)
+			log.Error("Invalid preconf tx removed from pool", "hash", event.TxHash.String())
+			pool.mu.Unlock()
+		}
+	}
 }
 
 // loop is the transaction pool's main event loop, waiting for and reacting to

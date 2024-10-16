@@ -1,0 +1,28 @@
+participants:
+  - el_type: geth
+    el_image: ethereum/client-go:latest
+    el_extra_params: ["--vmdebug"]
+    cl_type: lighthouse
+    cl_image: sigp/lighthouse:latest
+    cl_extra_params: ["--builder=http://host.docker.internal:18550", "--builder-fallback-disable-checks"]
+    vc_type: lighthouse
+    vc_image: sigp/lighthouse:latest
+    vc_extra_params: ["--builder-proposals", "--prefer-builder-proposals"]
+additional_services:
+  - blockscout
+network_params:
+  num_validator_keys_per_node: 64
+  preregistered_validator_count: 2
+port_publisher:
+  el:
+    enabled: true
+    public_port_start: 32000
+  cl:
+    enabled: true
+    public_port_start: 33000
+  vc:
+    enabled: true
+    public_port_start: 34000
+  additional_services:
+    enabled: true
+    public_port_start: 35000
